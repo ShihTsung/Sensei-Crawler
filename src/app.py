@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-from database import get_connection  # 確保從同目錄的 database.py 匯入
+from database import get_connection
 
 # 1. 網頁基本設定
 st.set_page_config(page_title="Sensei AI 情報中心", page_icon="🚀", layout="wide")
