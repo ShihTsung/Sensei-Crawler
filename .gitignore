@@ -1,0 +1,21 @@
+# Python 虛擬環境 (最重要！這裡面有幾萬個小檔案，絕對不要傳)
+venv/
+.venv/
+env/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# 資料庫與敏感資訊 (以後改用環境變數讀取，不放進 Git)
+.env
+
+# 產出的測試報告 (這些是結果，不是程式碼，不需要同步)
+Daily_Report*.md
+
+# VS Code 編輯器設定
+.vscode/
+
+# 作業系統暫存檔
+Thumbs.db
+.DS_Store
