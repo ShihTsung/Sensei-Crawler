@@ -56,7 +56,7 @@ def fetch_news_content(url):
 
         return {
             "title": title_element.get_text(strip=True),
-            "content": content_element.get_text(strip=True)[:2000], # 💡 限制 500 字，保護 CPU 
+            "content": content_element.get_text(strip=True)[:600], # 💡 限制 500 字，保護 CPU 
             "company": config['company']
         }
     except Exception as e:
@@ -101,22 +101,32 @@ if __name__ == "__main__":
         "https://www.bnext.com.tw/rss": "數位時代"
     }
 
-    print("🚀 Sensei 智慧監測系統 (整合優化版) 啟動...")
+    print("🚀 Sensei 智慧監測系統 (10 則批次模式) 啟動...")
     
     for rss_url, provider in rss_feeds.items():
-        print(f"\n--- 🚀 正在同步 {provider} ---")
-        target_url = get_latest_news_from_rss(rss_url)
+        print(f"\n--- 🚀 正在從 {provider} 獲取最新 10 則 ---")
         
-        if target_url:
-            print(f"🔗 最新網址: {target_url}")
+        feed = feedparser.parse(rss_url)
+        # 💡 使用 [:10] 抓取前 10 則，如果不夠 10 則會抓取全部
+        latest_entries = feed.entries[:10]
+        
+        print(f"📡 發現 {len(latest_entries)} 則新聞，準備開始批次分析...")
+
+        for i, entry in enumerate(latest_entries, 1):
+            target_url = entry.link
+            print(f"[{i}/10] 🔗 處理中: {target_url}")
+            
+            # 1. 抓取內文
             news_data = fetch_news_content(target_url)
             
             if news_data:
-                print(f"🧠 AI 分析中...")
+                print(f"🧠 AI 分析中... (這可能需要一點時間)")
+                # 2. AI 分析
                 result = analyze_news(news_data)
                 if result:
+                    # 3. 存入資料庫 (save_summary 內建 URL 唯一性檢查，不會重複存)
                     save_summary(result, target_url)
             else:
-                print(f"❌ 無法解析內容結構，跳過。")
+                print(f"❌ 無法抓取內容，跳過。")
 
-    print("\n✅ 今日所有情報採集任務已完成！")
+    print("\n✅ 今日所有批次情報採集任務已完成！")
