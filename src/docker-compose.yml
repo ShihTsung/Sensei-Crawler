@@ -1,0 +1,33 @@
+version: '3.8'
+
+services:
+  # 1. 資料庫服務：以後你不用手動裝 Postgres 了
+  db:
+    image: postgres:14
+    container_name: sensei-db
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: 2rligaoi # 這裡設你的密碼
+      POSTGRES_DB: sensei_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  # 2. 你的爬蟲與網頁服務
+  app:
+    build: .
+    container_name: sensei-app
+    depends_on:
+      - db
+    environment:
+      - DB_HOST=db  # 重點！在 Docker 內部，主機名稱就是服務名稱
+      - DB_NAME=sensei_db
+      - DB_USER=postgres
+      - DB_PASSWORD=2rligaoi
+    ports:
+      - "8501:8501" # Streamlit 預設埠口
+
+volumes:
+  postgres_data: # 這確保你資料庫停掉後，數據還會留著

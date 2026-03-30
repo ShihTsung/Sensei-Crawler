@@ -30,10 +30,10 @@ def load_all_data():
 # --- [初始化數據] ---
 df, news_df = load_all_data()
 
-st.title("Sensei-Crawler: AI 驅動戰略終端")
+st.title("Sensei-Crawler")
 
 # 使用 Tabs 切換
-tab_news, tab_stock = st.tabs(["🚀 科技情報 Dashboard", "🏛️ 企業檢索百科"])
+tab_news, tab_stock = st.tabs(["科技情報 Dashboard", "台灣股市基本面"])
 
 # ==========================================
 # 🚀 Tab 1: 科技情報 (包含優化後的啟動邏輯)
@@ -46,7 +46,7 @@ with tab_news:
     c3.metric("資料更新日期", str(date.today()))
     
     # 🎯 核心啟動鈕：整合狀態顯示與非同步提示
-    if c4.button("🔥 執行 AI 深度採集與分析 (Llama 3)", use_container_width=True, type="primary"):
+    if c4.button("執行 AI 深度採集與分析", use_container_width=True, type="primary"):
         with st.status("🤖 Sensei 正在全力運算中...", expanded=True) as status:
             st.write("📡 正在掃描 RSS 來源並抓取內文...")
             st.info("💡 提示：本地 CPU 負載較高，請觀察終端機 (PowerShell) 的實時進度。")
@@ -108,7 +108,33 @@ with tab_stock:
                 os.system("python src/price_sync.py")
                 st.cache_data.clear()
                 st.rerun()
-
+with tab2:
+    st.header("🏢 企業戰略百科")
+    company_name = st.text_input("輸入企業名稱 (例如：NVIDIA, 台積電, Fubon momo)", placeholder="請輸入欲檢索的企業...")
+    
+    if st.button("🔍 開始深度檢索"):
+        if company_name:
+            with st.spinner(f"正在調用 Gemini 2.5 進行 {company_name} 的戰略分析..."):
+                # 這裡呼叫我們待會要寫的百科分析函數
+                from src.encyclopedia import get_company_profile
+                profile = get_company_profile(company_name)
+                
+                if profile:
+                    st.success(f"已完成 {company_name} 的戰略建模")
+                    
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.subheader("📌 核心業務與定位")
+                        st.write(profile.get("core_business"))
+                    with col2:
+                        st.subheader("🚀 技術架構建議")
+                        st.info(profile.get("tech_stack_advice"))
+                        
+                    st.divider()
+                    st.subheader("📊 SWOT 戰略分析")
+                    st.json(profile.get("swot"))
+        else:
+            st.warning("請先輸入公司名稱。")
     st.divider()
     q = st.text_input("🔍 全文搜尋企業...", placeholder="2330 或 台積電")
     

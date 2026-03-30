@@ -1,115 +1,102 @@
+import os
+import time
+import psycopg2
 import cloudscraper
 import json
-import feedparser
-import re  # 新增：用於強力清洗 JSON
 from bs4 import BeautifulSoup
-from urllib.parse import urlparse
-from langchain_ollama import OllamaLLM
-from database import init_db, save_summary
-from config import SCRAPER_CONFIG, HEADERS
+from google import genai
+from dotenv import load_dotenv
 
-# 1. 初始化環境
-init_db()
-# 建議增加 timeout 或調整參數確保穩定
-llm = OllamaLLM(model="llama3", temperature=0) 
-scraper = cloudscraper.create_scraper()
+load_dotenv()
 
-def fetch_news_content(url):
-    """強效抓取內文 (支援子網域匹配、避開 403 並限制字數減輕 CPU 負擔)"""
-    parsed_netloc = urlparse(url).netloc
-    config_key = next((k for k in SCRAPER_CONFIG if k in parsed_netloc), None)
-    config = SCRAPER_CONFIG.get(config_key)
-    
-    if not config:
-        return None
+# 1. 初始化資料庫連線
+def get_db_connection():
+    return psycopg2.connect(
+        host=os.getenv("DB_HOST"),
+        database=os.getenv("DB_NAME"),
+        user=os.getenv("DB_USER"),
+        password=os.getenv("DB_PASSWORD"),
+        port=os.getenv("DB_PORT")
+    )
 
-    try:
-        response = scraper.get(url, headers=HEADERS, timeout=10)
-        if response.status_code != 200: return None
-        
-        soup = BeautifulSoup(response.text, 'html.parser')
-        content_div = soup.find(config['content_tag'], class_=config['content_class'])
-        
-        if content_div:
-            # 限制字數，避免模型跑太久且減少解析出錯率
-            return content_div.get_text(strip=True)[:2500]
-    except Exception as e:
-        print(f"❌ 抓取內文失敗: {e}")
-    return None
+# 2. 初始化 Gemini AI Client
+client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+MODEL_NAME = "gemini-flash-latest"
 
-def parse_ai_response(response):
-    """強力 JSON 解析器：排除 Llama 3 的開場白與結尾"""
-    try:
-        # 尋找第一個 { 與最後一個 }
-        start = response.find('{')
-        end = response.rfind('}') + 1
-        if start == -1 or end == 0:
-            print(f"DEBUG: AI 回傳找不到 JSON 結構")
-            return None
-            
-        json_str = response[start:end]
-        # 移除換行符號與非法控制字元
-        json_str = re.sub(r'[\x00-\x1F\x7F]', '', json_str)
-        
-        return json.loads(json_str, strict=False)
-    except Exception as e:
-        print(f"❌ AI 分析 JSON 失敗: {e}")
-        return None
-
-def analyze_news(content, provider):
-    """呼叫 Llama 3 進行摘要"""
-    if not content: return None
-    
-    # 嚴格的 Prompt 要求
+def get_ai_summary(text):
     prompt = f"""
-    You are a professional tech analyst. Analyze the following news content and return ONLY a valid JSON object.
-    Do NOT include any preamble, markdown code blocks, or explanations.
-
-    Target JSON structure:
-    {{
-        "title": "新聞標題",
-        "company": "{provider}",
-        "summary": ["重點一", "重點二", "重點三"],
-        "sentiment": "正面/負面/中立"
-    }}
-
-    News Content:
-    {content}
-    """
+    請針對以下科技新聞內容進行專業分析：
+    1. 提供 3 個重點摘要（繁體中文）。
+    2. 判定情緒評分（1-10分，1最悲觀，10最樂觀）。
+    3. 判定產業類別（如：AI, 半導體, 雲端服務）。
     
+    內容如下：{text[:3000]}
+    
+    請嚴格按照以下 JSON 格式回覆：
+    {{
+        "summary": "摘要內容",
+        "score": 數字,
+        "category": "類別"
+    }}
+    """
     try:
-        response = llm.invoke(prompt)
-        return parse_ai_response(response)
+        response = client.models.generate_content(
+            model=MODEL_NAME,
+            contents=prompt,
+            config={'response_mime_type': 'application/json'}
+        )
+        return json.loads(response.text)
     except Exception as e:
-        print(f"❌ Llama 3 呼叫失敗: {e}")
+        print(f"❌ AI 處理失敗: {e}")
         return None
+
+def run_crawler():
+    print("🚀 開始採集 iThome 科技新聞...")
+    scraper = cloudscraper.create_scraper()
+    res = scraper.get("https://www.ithome.com.tw/news")
+    soup = BeautifulSoup(res.text, 'html.parser')
+    
+    # 使用更新後的正確選擇器
+    items = soup.find_all("div", class_="views-row")
+    print(f"📊 偵測到 {len(items)} 則新聞，開始進行分析...")
+    
+    conn = get_db_connection()
+    cur = conn.cursor()
+    
+    for item in items[:5]:
+        title_tag = item.find("div", class_="views-field-title")
+        if not title_tag: continue
+        title_a = title_tag.find("a")
+        if not title_a: continue
+        
+        title = title_a.text.strip()
+        link = "https://www.ithome.com.tw" + title_a['href']
+        
+        # 檢查是否已重複
+        cur.execute("SELECT id FROM news_summaries WHERE url = %s", (link,))
+        if cur.fetchone(): 
+            print(f"⏩ 跳過已存在新聞: {title}")
+            continue
+        
+        print(f"📝 正在分析新聞內文: {title}")
+        content_res = scraper.get(link)
+        content_soup = BeautifulSoup(content_res.text, 'html.parser')
+        article_body = content_soup.select_one(".content-article")
+        text = article_body.text if article_body else ""
+        
+        ai_data = get_ai_summary(text)
+        if ai_data:
+            cur.execute("""
+                INSERT INTO news_summaries (title, url, summary, sentiment_score, category)
+                VALUES (%s, %s, %s, %s, %s)
+            """, (title, link, ai_data['summary'], ai_data['score'], ai_data['category']))
+            conn.commit()
+            print(f"✅ 資料已成功存入資料庫")
+            time.sleep(2) # 避免觸發 429 配額限制
+
+    cur.close()
+    conn.close()
+    print("🏁 採集與分析任務完成！")
 
 if __name__ == "__main__":
-    rss_feeds = {
-        "https://technews.tw/feed/": "科技新報",
-        "https://techorange.com/feed/": "科技報橘",
-        "https://www.bnext.com.tw/rss": "數位時代"
-    }
-
-    print("🚀 Sensei 智慧監測系統 (Llama 3 強化版) 啟動...")
-    
-    for rss_url, provider in rss_feeds.items():
-        print(f"\n--- 🚀 正在從 {provider} 獲取最新內容 ---")
-        feed = feedparser.parse(rss_url)
-        # 抓取前 10 則
-        latest_entries = feed.entries[:10]
-        
-        for i, entry in enumerate(latest_entries, 1):
-            target_url = entry.link
-            print(f"[{i}/10] 🔗 處理中: {target_url}")
-            
-            content = fetch_news_content(target_url)
-            if content:
-                print(f"🧠 AI 分析中... (Llama 3)")
-                result = analyze_news(content, provider)
-                if result:
-                    save_summary(result, target_url)
-                else:
-                    print(f"⚠️ 跳過：分析失敗")
-            else:
-                print(f"⚠️ 跳過：無法取得內文")
+    run_crawler()
