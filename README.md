@@ -1,4 +1,4 @@
-# 🚀 Sensei-Crawler AI 產業情報站
+# Sensei-Crawler AI 產業情報站
 
 這是一個自動化 AI 爬蟲系統，能抓取科技新聞、進行 LLM 摘要，並將資料存入 PostgreSQL 與生成報表。
 
