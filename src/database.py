@@ -1,24 +1,27 @@
 import psycopg2
-from psycopg2.extras import execute_values
 import os
 import socket
 from dotenv import load_dotenv
 from functools import wraps
 
 def auto_env_config(func):
-    """
-    動態環境裝飾器：執行任何資料庫操作前，先確保抓到正確的電腦配置
-    """
     @wraps(func)
     def wrapper(*args, **kwargs):
-        hostname = socket.gethostname()
-        # 偵測 Mac Mini 或 Windows
-        env_file = ".env.mac" if "PeterChendeMac-mini" in hostname else ".env.windows"
+        # 1. 優先加載 .env 檔案
+        load_dotenv()
         
-        if os.path.exists(env_file):
-            load_dotenv(env_file, override=True)
+        # 2. 自動判斷是否在 Docker 容器內
+        # Docker 容器內通常會存在 /.dockerenv 檔案
+        if os.path.exists('/.dockerenv'):
+            os.environ["DB_HOST"] = "db" # 容器內強制指向 compose 中的服務名稱
         else:
-            load_dotenv()
+            # 3. 如果在本地 (Windows/Mac)，根據 hostname 載入特定配置
+            hostname = socket.gethostname()
+            if "PeterChendeMac-mini" in hostname or "PeterMacBook-Air" in hostname:
+                load_dotenv(".env.mac", override=True)
+            else:
+                load_dotenv(".env.windows", override=True)
+                
         return func(*args, **kwargs)
     return wrapper
 
@@ -26,35 +29,10 @@ def auto_env_config(func):
 def get_connection():
     """建立資料庫連線"""
     return psycopg2.connect(
+        # 優先讀取環境變數，若無則預設為 localhost
         host=os.getenv("DB_HOST", "localhost"),
-        database=os.getenv("DB_NAME", "postgres"),
+        database=os.getenv("DB_NAME", "sensei_db"), # 配合您的 docker-compose 設定
         user=os.getenv("DB_USER", "postgres"),
-        password=os.getenv("DB_PASSWORD"),
+        password=os.getenv("DB_PASSWORD", "2rligaoi"), # 配合您的 docker-compose 設定
         port=os.getenv("DB_PORT", "5432")
     )
-
-def init_db():
-    """初始化資料庫表 (補回您遺失的程式碼)"""
-    try:
-        with get_connection() as conn:
-            with conn.cursor() as cur:
-                # 建立新聞摘要表
-                cur.execute('''
-                    CREATE TABLE IF NOT EXISTS news_summaries (
-                        id SERIAL PRIMARY KEY,
-                        title TEXT,
-                        company VARCHAR(100),
-                        summary TEXT,
-                        sentiment VARCHAR(20),
-                        url TEXT UNIQUE,
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                    )
-                ''')
-                conn.commit()
-        print("✅ PostgreSQL 資料表初始化成功")
-    except Exception as e:
-        print(f"❌ 資料庫初始化失敗: {e}")
-
-# 讓您可以直接執行 python src/database.py 來初始化
-if __name__ == "__main__":
-    init_db()

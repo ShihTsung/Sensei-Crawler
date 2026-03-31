@@ -30,23 +30,16 @@ def sync_historical():
 
                 if p_data.get('stat') == 'OK':
                     items = None
-                    
-                    # 邏輯 A：如果資料在 tables 裡面 (這是你目前的狀況)
                     if 'tables' in p_data:
-                        print(f"🔍 偵測到 tables 結構，正在搜尋「所有證券」表格...")
                         for table in p_data['tables']:
-                            # 尋找包含大量資料且標題含有「證券代號」的表格
                             if "證券代號" in str(table.get('fields', [])) and len(table.get('data', [])) > 500:
                                 items = table['data']
-                                print(f"🚀 在 tables 中找到目標表格：{table.get('title')} (共 {len(items)} 筆)")
                                 break
                     
-                    # 邏輯 B：如果資料直接在 dataX 裡面 (傳統格式備案)
                     if not items:
                         for key, value in p_data.items():
                             if key.startswith('data') and isinstance(value, list) and len(value) > 800:
                                 items = value
-                                print(f"🚀 在 {key} 中找到行情資料 (共 {len(items)} 筆)")
                                 break
 
                     if items:
@@ -56,38 +49,38 @@ def sync_historical():
                             sid, sname = row[0].strip(), row[1].strip()
                             if not re.match(r'^[A-Z0-9]{4,}$', sid): continue
                                 
-                            # 補齊開盤、最高、最低價的索引
-try:
-    vol = int(row[2].replace(',', ''))
-    op  = row[5].replace(',', '')  # 開盤
-    hi  = row[6].replace(',', '')  # 最高
-    lo  = row[7].replace(',', '')  # 最低
-    cl  = row[11].replace(',', '') # 收盤
-    
-    if cl and cl != '--':
-        cur.execute("""
-            INSERT INTO twse_prices (stock_id, stock_name, date, open_price, high_price, low_price, close_price, volume)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT (stock_id, date) 
-            DO UPDATE SET 
-                open_price = EXCLUDED.open_price,
-                high_price = EXCLUDED.high_price,
-                low_price = EXCLUDED.low_price,
-                close_price = EXCLUDED.close_price,
-                volume = EXCLUDED.volume,
-                stock_name = EXCLUDED.stock_name
-        """, (sid, sname, date_str, 
-              float(op) if op != '--' else None, 
-              float(hi) if hi != '--' else None, 
-              float(lo) if lo != '--' else None, 
-              float(cl), vol))
-        count += 1
+                            # --- 修正處：確保 try/except 縮排正確且邏輯完整 ---
+                            try:
+                                vol = int(row[2].replace(',', ''))
+                                op  = row[5].replace(',', '').replace('--', '')  # 開盤
+                                hi  = row[6].replace(',', '').replace('--', '')  # 最高
+                                lo  = row[7].replace(',', '').replace('--', '')  # 最低
+                                cl  = row[11].replace(',', '').replace('--', '') # 收盤
+                                
+                                if cl:
+                                    cur.execute("""
+                                        INSERT INTO twse_prices (stock_id, stock_name, date, open_price, high_price, low_price, close_price, volume)
+                                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                                        ON CONFLICT (stock_id, date) 
+                                        DO UPDATE SET 
+                                            open_price = EXCLUDED.open_price,
+                                            high_price = EXCLUDED.high_price,
+                                            low_price = EXCLUDED.low_price,
+                                            close_price = EXCLUDED.close_price,
+                                            volume = EXCLUDED.volume,
+                                            stock_name = EXCLUDED.stock_name
+                                    """, (sid, sname, date_str, 
+                                          float(op) if op else None, 
+                                          float(hi) if hi else None, 
+                                          float(lo) if lo else None, 
+                                          float(cl), vol))
+                                    count += 1
                             except (ValueError, IndexError):
                                 continue
                         conn.commit()
                         print(f"✅ {date_str} 行情導入完成 (共 {count} 筆)。")
                     else:
-                        print(f"❌ 依然找不到行情資料。請檢查：{p_data.keys()}")
+                        print(f"❌ 依然找不到行情資料。")
                 else:
                     print(f"⚠️ 證交所回傳 Stat 非 OK。")
 
@@ -109,7 +102,9 @@ try:
                             VALUES (%s, %s, %s, %s, %s)
                             ON CONFLICT (stock_id, date) 
                             DO UPDATE SET 
-                                foreign_buy = EXCLUDED.foreign_buy, trust_buy = EXCLUDED.trust_buy, dealer_buy = EXCLUDED.dealer_buy
+                                foreign_buy = EXCLUDED.foreign_buy, 
+                                trust_buy = EXCLUDED.trust_buy, 
+                                dealer_buy = EXCLUDED.dealer_buy
                         """, (sid, date_str, f_buy, t_buy, d_buy))
                     conn.commit()
                     print(f"✅ {date_str} 籌碼導入完成。")
