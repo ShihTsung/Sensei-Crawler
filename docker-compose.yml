@@ -2,7 +2,7 @@ services:
   db:
     image: postgres:14
     container_name: sensei-db
-    restart: always
+    restart: always  # <-- 關鍵：重開機或 Docker 重啟後自動恢復
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: 2rligaoi
@@ -15,12 +15,13 @@ services:
   app:
     build: .
     container_name: sensei-app
+    restart: always  # <-- 關鍵：確保 Web 介面隨時待命
     depends_on:
       - db
     env_file:
       - .env
     ports:
-      - "8503:8503"  # 這裡全面改成 8503
+      - "8503:8503"
     volumes:
       - .:/app
 
