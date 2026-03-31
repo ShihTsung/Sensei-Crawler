@@ -15,15 +15,14 @@ services:
   app:
     build: .
     container_name: sensei-app
-    restart: always  # <-- 關鍵：確保 Web 介面隨時待命
+    restart: always
     depends_on:
       - db
     env_file:
       - .env
     ports:
-      - "8503:8503"
+      - "8503:8501"  # 將 Mac 的 8503 對接到容器內的 8501
     volumes:
       - .:/app
-
-volumes:
-  postgres_data:
+    # 補上下這行，強迫 Streamlit 對外開放連線
+    command: streamlit run src/app.py --server.port 8501 --server.address 0.0.0.0
