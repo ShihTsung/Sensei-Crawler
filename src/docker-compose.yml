@@ -1,21 +1,21 @@
 version: '3.8'
 
 services:
-  # 1. 資料庫服務：以後你不用手動裝 Postgres 了
+  # 1. 資料庫服務
   db:
     image: postgres:14
     container_name: sensei-db
     restart: always
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: 2rligaoi # 這裡設你的密碼
+      POSTGRES_PASSWORD: 2rligaoi
       POSTGRES_DB: sensei_db
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
-  # 2. 你的爬蟲與網頁服務
+  # 2. 爬蟲與網頁服務
   app:
     build: .
     container_name: sensei-app
@@ -25,8 +25,11 @@ services:
     env_file:
       - .env
     ports:
-      - "8503:8501"  # 將 Mac 的 8503 對接到容器內的 8501
+      - "8503:8501"
     volumes:
       - .:/app
-    # 補上下這行，強迫 Streamlit 對外開放連線
     command: streamlit run src/app.py --server.port 8501 --server.address 0.0.0.0
+
+# 🔴 關鍵：必須在這裡宣告，否則會噴 undefined volume 錯誤
+volumes:
+  postgres_data:

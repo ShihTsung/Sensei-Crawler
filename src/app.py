@@ -1,111 +1,110 @@
 import streamlit as st
 import pandas as pd
 from database import get_connection
-import os
-import plotly.express as px
+from datetime import datetime
+import pytz
 
-# 1. 頁面配置
-st.set_page_config(page_title="Sensei AI 戰略終端", page_icon="🧬", layout="wide")
+# 設定網頁寬度為全螢幕，並解決渲染上限問題
+st.set_page_config(layout="wide", page_title="台股戰略終端")
+pd.set_option("styler.render.max_elements", 1000000)
+
+# 1. 取得資料庫中「所有」有資料的日期清單
+def get_all_available_dates():
+    try:
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                # 抓取不重複的日期，並由新到舊排序
+                cur.execute("SELECT DISTINCT date FROM twse_prices ORDER BY date DESC")
+                results = cur.fetchall()
+                return [r[0] for r in results]
+    except Exception as e:
+        st.error(f"無法讀取日期清單: {e}")
+        return []
 
 # 2. 數據加載邏輯
-@st.cache_data(ttl=30)
-def load_all_data():
+@st.cache_data(ttl=60)
+def load_all_data(date_str):
     with get_connection() as conn:
-        try:
-            news_df = pd.read_sql("SELECT * FROM news_summaries ORDER BY created_at DESC", conn)
-        except:
-            news_df = pd.DataFrame()
+        stock_query = f"""
+            SELECT 
+                p.stock_id AS "代碼", 
+                p.stock_name AS "名稱", 
+                p.open_price AS "開盤",
+                p.high_price AS "最高",
+                p.low_price AS "最低",
+                p.close_price AS "收盤",
+                p.price_change AS "漲跌",
+                p.pe_ratio AS "本益比",
+                p.trade_volume AS "成交量", 
+                p.trade_value AS "成交金額",
+                i.foreign_buy AS "外資買進", 
+                i.foreign_sell AS "外資賣出", 
+                i.foreign_net AS "外資淨額",
+                i.trust_net AS "投信淨額", 
+                i.dealer_net AS "自營商淨額"
+            FROM twse_prices p
+            LEFT JOIN twse_institutional i ON p.stock_id = i.stock_id AND p.date = i.date
+            WHERE p.date = '{date_str}'
+            ORDER BY "成交金額" DESC
+        """
+        df = pd.read_sql(stock_query, conn)
         
-        try:
-            # 撈取資料並計算成交金額 (收盤價 * 成交量)
-            stock_query = """
-                SELECT 
-                    p.stock_id AS "代碼", 
-                    p.stock_name AS "公司名稱", 
-                    p.close_price AS "收盤價", 
-                    p.volume AS "成交量", 
-                    (p.close_price * p.volume) AS "成交金額",
-                    i.foreign_buy AS "外資買賣超", 
-                    i.trust_buy AS "投信買賣超", 
-                    i.dealer_buy AS "自營商買賣超"
-                FROM twse_prices p
-                LEFT JOIN twse_institutional i ON p.stock_id = i.stock_id AND p.date = i.date
-                WHERE p.date = '2026-03-30'
-                ORDER BY "成交金額" DESC
-            """
-            stock_df = pd.read_sql(stock_query, conn)
-        except:
-            stock_df = pd.DataFrame()
+        # 過濾掉權證 (代碼長度 > 5)
+        if not df.empty:
+            df = df[df['代碼'].str.len() <= 5]
             
-        return news_df, stock_df
+        return df
 
-# --- [初始化數據] ---
-news_df, stock_df = load_all_data()
+# --- 執行主邏輯 ---
 
-st.title("Sensei-Crawler")
-tab1, tab2 = st.tabs(["科技情報 Dashboard", "台灣股市基本面"])
+# A. 取得所有日期選項
+all_dates = get_all_available_dates()
 
-# ==========================================
-# 🚀 Tab 1: 科技情報內容 (維持原樣)
-# ==========================================
-with tab1:
-    st.write("科技情報內容展示中...")
-
-# ==========================================
-# 🏛️ Tab 2: 台灣股市基本面 (優化呈現版)
-# ==========================================
-with tab2:
-    target_date = "2026-03-30"
-    st.header(f"🏢 {target_date} 股市行情數據")
+if all_dates:
+    # B. 建立側邊欄日期選擇器
+    st.sidebar.header("🗓️ 歷史存檔切換")
+    
+    # 格式化日期顯示 (YYYYMMDD -> YYYY-MM-DD)
+    date_options = {datetime.strptime(d, '%Y%m%d').strftime('%Y-%m-%d'): d for d in all_dates}
+    selected_display_date = st.sidebar.selectbox("請選擇交易日期", options=list(date_options.keys()))
+    
+    # 取得實際要查詢的 YYYYMMDD 字串
+    target_date = date_options[selected_display_date]
+    
+    # C. 載入選定日期的數據
+    stock_df = load_all_data(target_date)
+    
+    st.title(f"🏛️ 台股戰略終端 - {selected_display_date} 數據報表")
     
     if not stock_df.empty:
-        # --- 頂部儀表板 ---
-        m1, m2 = st.columns([1, 2])
-        # 修正：使用 :,d 格式化整數千分位，解決 ValueError
-        m1.metric(f"{target_date} 掛牌總數", f"{len(stock_df):,d} 筆")
+        # 數據概覽儀表板
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("顯示家數 (已過濾權證)", f"{len(stock_df)} 家")
+        with col2:
+            total_amt = stock_df["成交金額"].sum() / 1e8
+            st.metric("總成交金額", f"{total_amt:.2f} 億")
+        with col3:
+            st.metric("當前查詢日期", selected_display_date)
+
+        # 搜尋功能
+        search_query = st.text_input("🔍 搜尋股票代碼或名稱", "")
+        if search_query:
+            stock_df = stock_df[
+                stock_df['代碼'].str.contains(search_query) | 
+                stock_df['名稱'].str.contains(search_query)
+            ]
         
-        # --- 排名前 10 筆成交金額 ---
-        st.subheader("🔥 成交金額排行前 10 名")
-        # 取成交金額最高的前 10 名
-        top_10 = stock_df.head(10).copy()
-        # 轉換為「億元」顯示，更符合台股閱讀習慣
-        top_10["成交金額(億)"] = top_10["成交金額"] / 100_000_000
-        
+        # 呈現表格並美化格式
         st.dataframe(
-            top_10[["代碼", "公司名稱", "收盤價", "成交金額(億)"]],
-            use_container_width=True,
-            hide_index=True,
-            column_config={
-                "收盤價": st.column_config.NumberColumn("收盤價", format="%.2f"),
-                "成交金額(億)": st.column_config.NumberColumn("成交金額 (億元)", format="%.2f 億")
-            }
-        )
-
-        st.divider()
-
-        # --- 全量資料搜尋與呈現 ---
-        search_q = st.text_input("🔍 搜尋代碼或公司名稱 (如：2330 或 台積電)", "")
-        display_df = stock_df.copy()
-        if search_q:
-            display_df = display_df[display_df['代碼'].str.contains(search_q) | 
-                                    display_df['公司名稱'].str.contains(search_q)]
-
-        # --- 完整資料表格式化 ---
-        st.dataframe(
-            display_df,
-            use_container_width=True,
-            height=600,
-            hide_index=True,
-            column_config={
-                "代碼": st.column_config.TextColumn("代碼"),
-                "公司名稱": st.column_config.TextColumn("公司名稱"),
-                "收盤價": st.column_config.NumberColumn("收盤價", format="%.2f"),
-                "成交量": st.column_config.NumberColumn("成交量 (股)", format="%,d"),
-                "成交金額": st.column_config.NumberColumn("成交金額 (元)", format="%,d"),
-                "外資買賣超": st.column_config.NumberColumn("外資買賣超", format="%,d"),
-                "投信買賣超": st.column_config.NumberColumn("投信買賣超", format="%,d"),
-                "自營商買賣超": st.column_config.NumberColumn("自營商買賣超", format="%,d"),
-            }
+            stock_df.style.format({
+                "收盤": "{:.2f}", "開盤": "{:.2f}", "最高": "{:.2f}", "最低": "{:.2f}",
+                "漲跌": "{:+.2f}", "本益比": "{:.2f}", "成交量": "{:,}", "成交金額": "{:,.0f}"
+            }, na_rep="-"), 
+            use_container_width=True, 
+            height=700
         )
     else:
-        st.warning(f"資料庫中尚無 {target_date} 的行情數據。")
+        st.warning(f"⚠️ {selected_display_date} 尚無符合條件的數據內容。")
+else:
+    st.error("⚠️ 資料庫目前是空的，請執行同步腳本抓取資料。")

@@ -2,11 +2,11 @@ services:
   db:
     image: postgres:14
     container_name: sensei-db
-    restart: always  # <-- 關鍵：重開機或 Docker 重啟後自動恢復
+    restart: always
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: 2rligaoi
-      POSTGRES_DB: sensei_db
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     ports:
       - "5432:5432"
     volumes:
@@ -19,10 +19,12 @@ services:
     depends_on:
       - db
     env_file:
-      - .env
+      - .env  # 讓 Docker 自動去讀取該台電腦的 .env 檔案
     ports:
-      - "8503:8501"  # 將 Mac 的 8503 對接到容器內的 8501
+      - "8503:8501"
     volumes:
       - .:/app
-    # 補上下這行，強迫 Streamlit 對外開放連線
     command: streamlit run src/app.py --server.port 8501 --server.address 0.0.0.0
+
+volumes:
+  postgres_data:
