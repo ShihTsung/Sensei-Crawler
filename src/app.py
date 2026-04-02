@@ -179,18 +179,65 @@ if not all_dates:
     st.error("⚠️ 資料庫目前是空的，請執行同步腳本抓取資料。")
     st.stop()
 
-# 側邊欄
-st.sidebar.header("🗓️ 歷史存檔切換")
-date_options = {
-    datetime.strptime(d, "%Y%m%d").strftime("%Y-%m-%d"): d
-    for d in all_dates
+# 把有資料的日期轉成 date 物件集合，供提示使用
+available_date_objs = {
+    datetime.strptime(d, "%Y%m%d").date() for d in all_dates
 }
-selected_display_date = st.sidebar.selectbox("請選擇交易日期", list(date_options.keys()))
-target_date = date_options[selected_display_date]
+latest_date_obj = max(available_date_objs)
+earliest_date_obj = min(available_date_objs)
 
-# 載入資料
+# ── 側邊欄 ────────────────────────────────────────────────────
+st.sidebar.header("🗓️ 歷史存檔資料")
+
+# 有資料的日期標示提示（顯示在日曆上方）
+st.sidebar.caption("🔵 藍色 = 有資料的日期")
+
+# 用 CSS 把有資料的日期文字染藍（Streamlit 日曆原生不支援格色，
+# 改用 markdown 列出有資料的日期範圍提示，讓使用者知道哪些有資料）
+with st.sidebar.expander("📅 有資料的日期一覽", expanded=False):
+    date_list_md = "\n".join(
+        f"- :blue[{datetime.strptime(d, '%Y%m%d').strftime('%Y-%m-%d')}]"
+        for d in all_dates
+    )
+    st.markdown(date_list_md)
+
+# 日曆選擇器（date_input）
+picked = st.sidebar.date_input(
+    "選擇交易日期",
+    value=latest_date_obj,
+    min_value=earliest_date_obj,
+    max_value=latest_date_obj,
+    format="YYYY-MM-DD",
+)
+
+# 如果選到沒有資料的日期，自動跳到最近有資料的日期
+if picked not in available_date_objs:
+    # 找最近的有資料日期
+    closest = min(available_date_objs, key=lambda d: abs((d - picked).days))
+    st.sidebar.warning(f"⚠️ {picked} 無資料，自動切換至 {closest}")
+    picked = closest
+
+target_date = picked.strftime("%Y%m%d")
+selected_display_date = picked.strftime("%Y-%m-%d")
+
+st.sidebar.divider()
+
+# ── 個股集保查詢（側邊欄）────────────────────────────────────
+st.sidebar.subheader("🔎 個股集保分析")
+lookup_id = st.sidebar.text_input("輸入股票代碼", placeholder="例如：2330")
+
+# 載入主資料（先載入，才能查股票名稱）
 stock_df = load_all_data(target_date)
 
+if lookup_id:
+    sid = lookup_id.strip()
+    match = stock_df[stock_df["代碼"] == sid] if not stock_df.empty else pd.DataFrame()
+    name = match.iloc[0]["名稱"] if not match.empty else ""
+    label = f"📊 {sid} {name} 集保分析" if name else f"📊 {sid} 集保分析"
+    if st.sidebar.button(label, use_container_width=True):
+        show_concentration_dialog(sid, name)
+
+# ── 主內容區 ──────────────────────────────────────────────────
 st.title(f"台股 — {selected_display_date} 數據報表")
 
 if stock_df.empty:
@@ -205,38 +252,21 @@ col3.metric("查詢日期", selected_display_date)
 
 # 搜尋
 search_query = st.text_input("🔍 搜尋股票代碼或名稱", "")
+display_df = stock_df.copy()
 if search_query:
-    stock_df = stock_df[
-        stock_df["代碼"].str.contains(search_query, na=False) |
-        stock_df["名稱"].str.contains(search_query, na=False)
+    display_df = display_df[
+        display_df["代碼"].str.contains(search_query, na=False) |
+        display_df["名稱"].str.contains(search_query, na=False)
     ]
 
-st.caption("💡 點擊下方按鈕可查看該股集保持股分析")
+st.caption("💡 左側輸入股票代碼可查看集保持股分析")
 
-# 每列顯示股票資料 + 「集保分析」按鈕
-# 用 st.dataframe 顯示主表，另外用按鈕觸發 dialog
 st.dataframe(
-    stock_df.style.format({
+    display_df.style.format({
         "收盤": "{:.2f}", "開盤": "{:.2f}", "最高": "{:.2f}", "最低": "{:.2f}",
         "漲跌": "{:+.2f}", "本益比": "{:.2f}",
         "成交量": "{:,}", "成交金額": "{:,.0f}",
     }, na_rep="-"),
     use_container_width=True,
-    height=500,
+    height=650,
 )
-
-st.divider()
-st.subheader("🔎 個股集保分析")
-
-# 輸入代碼開啟集保 dialog
-lookup_id = st.text_input("輸入股票代碼查集保資料", placeholder="例如：2330")
-if lookup_id:
-    match = stock_df[stock_df["代碼"] == lookup_id.strip()]
-    if not match.empty:
-        name = match.iloc[0]["名稱"]
-        if st.button(f"📊 開啟 {lookup_id} {name} 集保分析"):
-            show_concentration_dialog(lookup_id.strip(), name)
-    else:
-        # 不在今日行情也能查（直接用代碼）
-        if st.button(f"📊 開啟 {lookup_id} 集保分析"):
-            show_concentration_dialog(lookup_id.strip(), "")
