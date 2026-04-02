@@ -18,10 +18,9 @@ services:
     restart: always
     depends_on:
       - db
-    # 解決 NameResolutionError，強制使用 Google DNS
-    dns:
-      - 8.8.8.8
-      - 8.8.4.4
+    # 解決 DNS_PROBE_FINISHED_NXDOMAIN，直接定義 IP 對應
+    extra_hosts:
+      - "data.tdcc.com.tw:117.56.213.165"
     env_file:
       - .env
     ports:
