@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 from functools import wraps
 
 def auto_env_config(func):
+    """自動偵測環境並載入對應的資料庫設定"""
     @wraps(func)
     def wrapper(*args, **kwargs):
         load_dotenv()
@@ -31,43 +32,59 @@ def get_connection():
     )
 
 def init_db():
-    """自動化建表：升級為全欄位版本"""
+    """自動化建表：整合行情、籌碼、董監、十大股東與集保週資料"""
     try:
         with get_connection() as conn:
             with conn.cursor() as cur:
-                # 建立行情表 (新增全量欄位)
+                # 1. 行情表
                 cur.execute('''
                     CREATE TABLE IF NOT EXISTS twse_prices (
                         stock_id VARCHAR(20), stock_name VARCHAR(100), date VARCHAR(20),
-                        trade_volume BIGINT,      -- 成交股數
-                        transaction_count INT,    -- 成交筆數
-                        trade_value NUMERIC,      -- 成交金額
-                        open_price NUMERIC,       -- 開盤價
-                        high_price NUMERIC,       -- 最高價
-                        low_price NUMERIC,        -- 最低價
-                        close_price NUMERIC,      -- 收盤價
-                        price_change_dir VARCHAR(10), -- 漲跌符號
-                        price_change NUMERIC,     -- 漲跌價差
-                        last_buy_price NUMERIC,   -- 最後揭示買價
-                        last_buy_volume INT,      -- 最後揭示買量
-                        last_sell_price NUMERIC,  -- 最後揭示賣價
-                        last_sell_volume INT,     -- 最後揭示賣量
-                        pe_ratio NUMERIC,         -- 本益比
-                        PRIMARY KEY (stock_id, date)
+                        trade_volume BIGINT, transaction_count INT, trade_value NUMERIC,
+                        open_price NUMERIC, high_price NUMERIC, low_price NUMERIC, close_price NUMERIC,
+                        price_change_dir VARCHAR(10), price_change NUMERIC,
+                        last_buy_price NUMERIC, last_buy_volume INT,
+                        last_sell_price NUMERIC, last_sell_volume INT,
+                        pe_ratio NUMERIC, PRIMARY KEY (stock_id, date)
                     );
                 ''')
-                # 建立籌碼表 (細分買進/賣出)
+                # 2. 籌碼表
                 cur.execute('''
                     CREATE TABLE IF NOT EXISTS twse_institutional (
                         stock_id VARCHAR(20), date VARCHAR(20),
-                        foreign_buy BIGINT, foreign_sell BIGINT, foreign_net BIGINT, -- 外資
-                        trust_buy BIGINT, trust_sell BIGINT, trust_net BIGINT,       -- 投信
-                        dealer_net BIGINT, -- 自營商買賣超
-                        PRIMARY KEY (stock_id, date)
+                        foreign_buy BIGINT, foreign_sell BIGINT, foreign_net BIGINT,
+                        trust_buy BIGINT, trust_sell BIGINT, trust_net BIGINT,
+                        dealer_net BIGINT, PRIMARY KEY (stock_id, date)
+                    );
+                ''')
+                # 3. 董監持股表
+                cur.execute('''
+                    CREATE TABLE IF NOT EXISTS twse_insider_holding (
+                        stock_id VARCHAR(10), date VARCHAR(20),
+                        title VARCHAR(50), name VARCHAR(100),
+                        held_shares BIGINT, pledged_shares BIGINT, pledge_rate NUMERIC,
+                        PRIMARY KEY (stock_id, date, name)
+                    );
+                ''')
+                # 4. 前十大股東表
+                cur.execute('''
+                    CREATE TABLE IF NOT EXISTS twse_top10_shareholders (
+                        stock_id VARCHAR(10), year_period VARCHAR(20),
+                        rank INT, name VARCHAR(100),
+                        held_shares BIGINT, held_rate NUMERIC,
+                        PRIMARY KEY (stock_id, year_period, name)
+                    );
+                ''')
+                # 5. 集保週資料表
+                cur.execute('''
+                    CREATE TABLE IF NOT EXISTS twse_weekly_concentration (
+                        stock_id VARCHAR(10), date VARCHAR(20),
+                        level INT, holders INT, shares BIGINT, rate NUMERIC,
+                        PRIMARY KEY (stock_id, date, level)
                     );
                 ''')
                 conn.commit()
-        print("✅ 資料庫全量欄位檢查完成")
+        print("✅ 所有資料表結構檢查完成")
     except Exception as e:
         print(f"❌ 初始化失敗: {e}")
 

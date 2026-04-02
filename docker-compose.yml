@@ -4,9 +4,9 @@ services:
     container_name: sensei-db
     restart: always
     environment:
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-2rligaoi}
+      POSTGRES_DB: ${DB_NAME:-sensei_db}
     ports:
       - "5432:5432"
     volumes:
@@ -18,8 +18,12 @@ services:
     restart: always
     depends_on:
       - db
+    # 解決 NameResolutionError，強制使用 Google DNS
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
     env_file:
-      - .env  # 讓 Docker 自動去讀取該台電腦的 .env 檔案
+      - .env
     ports:
       - "8503:8501"
     volumes:

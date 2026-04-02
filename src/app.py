@@ -74,7 +74,7 @@ if all_dates:
     # C. 載入選定日期的數據
     stock_df = load_all_data(target_date)
     
-    st.title(f"🏛️ 台股戰略終端 - {selected_display_date} 數據報表")
+    st.title(f"台股 - {selected_display_date} 數據報表")
     
     if not stock_df.empty:
         # 數據概覽儀表板
