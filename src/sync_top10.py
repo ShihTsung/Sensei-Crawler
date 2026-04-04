@@ -23,19 +23,23 @@ def get_all_stock_ids() -> list[tuple[str, str]]:
     """從 DB 取得所有股票代碼與市場類型，回傳 [(stock_id, 'sii'|'otc'), ...]"""
     with get_connection() as conn:
         with conn.cursor() as cur:
-            # 優先從 company_info 取市場類型
-            cur.execute("""
-                SELECT stock_id, market_type FROM company_info
-                WHERE market_type IN ('上市', '上櫃')
-                ORDER BY stock_id
-            """)
-            rows = cur.fetchall()
-            if rows:
-                return [
-                    (r[0], "sii" if r[1] == "上市" else "otc")
-                    for r in rows
-                ]
-            # fallback：全用上市
+            # 優先從 company_info 取市場類型（若表存在）
+            try:
+                cur.execute("""
+                    SELECT stock_id, market_type FROM company_info
+                    WHERE market_type IN ('上市', '上櫃')
+                    ORDER BY stock_id
+                """)
+                rows = cur.fetchall()
+                if rows:
+                    return [
+                        (r[0], "sii" if r[1] == "上市" else "otc")
+                        for r in rows
+                    ]
+            except Exception:
+                conn.rollback()
+
+            # fallback：從 twse_prices 取，全當上市處理
             cur.execute("SELECT DISTINCT stock_id FROM twse_prices ORDER BY stock_id")
             return [(r[0], "sii") for r in cur.fetchall()]
 
