@@ -5,6 +5,8 @@ from database import get_connection
 from datetime import datetime
 from sync_shareholding import sync_insider_holding
 from import_categories import import_from_df
+from sync_company_info import sync_company_info
+from sync_top10 import sync_top10
 
 st.set_page_config(layout="wide", page_title="台股戰略終端")
 pd.set_option("styler.render.max_elements", 1000000)
@@ -302,6 +304,50 @@ with st.sidebar.expander("🔧 資料管理工具"):
                 st.cache_data.clear()
             except Exception as e:
                 st.error(f"❌ 匯入失敗：{e}")
+
+    st.divider()
+
+    # ── 公司基本資料 ──────────────────────────────────────────
+    st.markdown("**🏢 公司基本資料**")
+    st.caption("一次拉取全市場統編、地址、董事長、電話（建議每年更新一次）")
+    if st.button("更新公司基本資料", use_container_width=True, key="ci_run"):
+        with st.status("抓取公司基本資料中…", expanded=True) as job:
+            try:
+                count = sync_company_info()
+                st.cache_data.clear()
+                job.update(label=f"✅ 完成：{count} 筆", state="complete")
+            except Exception as e:
+                job.update(label="❌ 失敗", state="error")
+                st.error(str(e))
+
+    st.divider()
+
+    # ── 前十大股東 ────────────────────────────────────────────
+    st.markdown("**👥 前十大股東（每季）**")
+    st.caption("⚠️ 全市場 1700+ 支，約需 30~60 分鐘，請耐心等候")
+    now_t10 = datetime.now()
+    col_t1, col_t2 = st.columns(2)
+    t10_year   = col_t1.number_input("年份", min_value=2015, max_value=now_t10.year,
+                                     value=now_t10.year, step=1, key="t10_y")
+    t10_season = col_t2.selectbox("季度", [1, 2, 3, 4],
+                                  index=(now_t10.month - 1) // 3, key="t10_s")
+
+    if st.button("🚀 開始抓取", use_container_width=True, key="t10_run"):
+        prog_t10 = st.progress(0)
+        status_t10 = st.empty()
+
+        def _t10_progress(done, total):
+            prog_t10.progress(done / total)
+            status_t10.caption(f"{done} / {total} 支")
+
+        with st.status(f"抓取 {t10_year}Q{t10_season} 前十大股東…", expanded=True) as job:
+            try:
+                count = sync_top10(t10_year, t10_season, progress_cb=_t10_progress)
+                st.cache_data.clear()
+                job.update(label=f"✅ 完成：{count} 筆", state="complete")
+            except Exception as e:
+                job.update(label="❌ 失敗", state="error")
+                st.error(str(e))
 
     st.divider()
 
