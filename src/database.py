@@ -1,26 +1,11 @@
 import psycopg2
 import os
-import socket
 from dotenv import load_dotenv
-from functools import wraps
 
-def auto_env_config(func):
-    """自動偵測環境並載入對應的資料庫設定"""
-    @wraps(func)
-    def wrapper(*args, **kwargs):
-        load_dotenv()
-        if os.path.exists('/.dockerenv'):
-            os.environ["DB_HOST"] = "db"
-        else:
-            hostname = socket.gethostname()
-            if "PeterChendeMac-mini" in hostname or "PeterMacBook-Air" in hostname:
-                load_dotenv(".env.mac", override=True)
-            else:
-                load_dotenv(".env.windows", override=True)
-        return func(*args, **kwargs)
-    return wrapper
+# Docker 內：DB_HOST 由 docker-compose env_file 注入（值為 "db"）
+# 本機直接跑：.env 裡設 DB_HOST=localhost
+load_dotenv()
 
-@auto_env_config
 def get_connection():
     """建立資料庫連線"""
     return psycopg2.connect(
