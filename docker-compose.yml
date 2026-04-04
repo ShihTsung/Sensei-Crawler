@@ -29,5 +29,17 @@ services:
       - .:/app
     command: streamlit run src/app.py --server.port 8501 --server.address 0.0.0.0
 
+  intraday:
+    build: .
+    container_name: sensei-intraday
+    restart: always
+    depends_on:
+      - db
+    env_file:
+      - .env
+    volumes:
+      - .:/app
+    command: python src/intraday_sync.py
+
 volumes:
   postgres_data:

@@ -20,3 +20,7 @@ Daily_Report*.md
 # 作業系統暫存檔
 Thumbs.db
 .DS_Store
+
+# 下載的資料檔（非程式碼）
+*.csv
+mops_debug.html

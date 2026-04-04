@@ -27,7 +27,7 @@ def get_connection():
         host=os.getenv("DB_HOST", "localhost"),
         database=os.getenv("DB_NAME", "sensei_db"),
         user=os.getenv("DB_USER", "postgres"),
-        password=os.getenv("DB_PASSWORD", "2rligaoi"),
+        password=os.getenv("DB_PASSWORD", ""),
         port=os.getenv("DB_PORT", "5432")
     )
 
@@ -83,6 +83,19 @@ def init_db():
                         PRIMARY KEY (stock_id, date, level)
                     );
                 ''')
+                # 6. 盤中快照表
+                cur.execute('''
+                    CREATE TABLE IF NOT EXISTS twse_intraday (
+                        stock_id      VARCHAR(10),
+                        snapshot_time TIMESTAMP,
+                        close_price   NUMERIC,
+                        PRIMARY KEY   (stock_id, snapshot_time)
+                    );
+                ''')
+                # ── INDEX ────────────────────────────────────────────
+                cur.execute('CREATE INDEX IF NOT EXISTS idx_twse_prices_date ON twse_prices (date);')
+                cur.execute('CREATE INDEX IF NOT EXISTS idx_twse_institutional_date ON twse_institutional (date);')
+                cur.execute('CREATE INDEX IF NOT EXISTS idx_twse_intraday_time ON twse_intraday (snapshot_time);')
                 conn.commit()
         print("✅ 所有資料表結構檢查完成")
     except Exception as e:
