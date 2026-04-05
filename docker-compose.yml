@@ -23,6 +23,8 @@ services:
       - "data.tdcc.com.tw:117.56.213.165"
     env_file:
       - .env
+    environment:
+      - PYTHONPATH=/app/src
     ports:
       - "8503:8501"
     volumes:
@@ -37,6 +39,8 @@ services:
       - db
     env_file:
       - .env
+    environment:
+      - PYTHONPATH=/app/src
     volumes:
       - .:/app
     command: python src/intraday_sync.py

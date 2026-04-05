@@ -11,6 +11,7 @@ __pycache__/
 .env
 .env.mac
 
+
 # 產出的測試報告 (這些是結果，不是程式碼，不需要同步)
 Daily_Report*.md
 
