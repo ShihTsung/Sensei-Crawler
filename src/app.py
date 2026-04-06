@@ -2,11 +2,13 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 from database import get_connection
-from datetime import datetime
+from datetime import datetime, timedelta
 from sync_shareholding import sync_insider_holding
 from import_categories import import_from_df
 from sync_company_info import sync_company_info
 from sync_top10 import sync_top10
+from twse_historical_sync import sync_historical
+from sync_range import run_sync_for_date
 
 st.set_page_config(layout="wide", page_title="台股戰略終端")
 pd.set_option("styler.render.max_elements", 1000000)
@@ -379,6 +381,51 @@ with st.sidebar.expander("🔧 資料管理工具"):
                     sync_insider_holding(y, m)
                     prog.progress((i + 1) / len(months))
                 job.update(label=f"✅ 完成，共補 {len(months)} 個月", state="complete")
+
+    st.divider()
+
+    # ── 行情＆籌碼同步 ────────────────────────────────────────
+    st.markdown("**📈 行情＆籌碼同步**")
+    st.caption("從證交所抓取收盤行情與三大法人籌碼")
+
+    if st.button("同步最新交易日", use_container_width=True, key="hist_latest"):
+        with st.status("同步最新交易日中…", expanded=True) as job:
+            try:
+                sync_historical()
+                st.cache_data.clear()
+                job.update(label="✅ 完成", state="complete")
+            except Exception as e:
+                job.update(label="❌ 失敗", state="error")
+                st.error(str(e))
+
+    st.caption("補抓歷史區間（每日含 8 秒等待，勿選太長）")
+    now_sync = datetime.now()
+    col_s1, col_s2 = st.columns(2)
+    sync_start = col_s1.date_input("起始日", value=now_sync.date() - timedelta(days=7), key="sync_start")
+    sync_end   = col_s2.date_input("結束日", value=now_sync.date(), key="sync_end")
+
+    if st.button("🚀 補抓區間", use_container_width=True, key="hist_range"):
+        dates, d = [], sync_start
+        while d <= sync_end:
+            if d.weekday() < 5:
+                dates.append(d.strftime("%Y%m%d"))
+            d += timedelta(days=1)
+
+        if not dates:
+            st.warning("區間內無交易日。")
+        else:
+            prog = st.progress(0)
+            with st.status(f"補抓 {len(dates)} 個交易日…", expanded=True) as job:
+                ok, skip = 0, 0
+                for i, ds in enumerate(dates):
+                    st.write(f"📡 {ds}")
+                    if run_sync_for_date(ds):
+                        ok += 1
+                    else:
+                        skip += 1
+                    prog.progress((i + 1) / len(dates))
+                st.cache_data.clear()
+                job.update(label=f"✅ 完成：{ok} 日成功，{skip} 日跳過", state="complete")
 
 # ── 主內容區 ──────────────────────────────────────────────────
 st.title(f"台股 — {selected_display_date} 數據報表")
