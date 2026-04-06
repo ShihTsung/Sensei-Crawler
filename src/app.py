@@ -53,7 +53,7 @@ def load_all_data(date_str):
             SELECT
                 p.stock_id    AS "代碼",
                 p.stock_name  AS "名稱",
-                sc.category_name AS "產業",
+                c.industry AS "產業",
                 p.open_price  AS "開盤",
                 p.high_price  AS "最高",
                 p.low_price   AS "最低",
@@ -71,8 +71,8 @@ def load_all_data(date_str):
             FROM twse_prices p
             LEFT JOIN twse_institutional i
                    ON p.stock_id = i.stock_id AND p.date = i.date
-            LEFT JOIN stock_category sc
-                   ON p.stock_id = sc.stock_id
+            LEFT JOIN companies c
+                   ON p.stock_id = c.stock_id
             WHERE p.date = '{date_str}'
             ORDER BY "成交金額" DESC NULLS LAST
         """

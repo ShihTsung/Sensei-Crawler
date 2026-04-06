@@ -34,14 +34,13 @@ def init_markets():
                     # 過濾：只要 4 碼純數字股票
                     if stock_id and name and len(stock_id) == 4 and stock_id.isdigit():
                         cur.execute("""
-                            INSERT INTO companies (stock_id, company_name, industry_type, market_type)
+                            INSERT INTO companies (stock_id, company_name, industry, market_type)
                             VALUES (%s, %s, %s, %s)
-                            ON CONFLICT (stock_id) 
-                            DO UPDATE SET 
+                            ON CONFLICT (stock_id)
+                            DO UPDATE SET
                                 company_name = EXCLUDED.company_name,
-                                industry_type = EXCLUDED.industry_type,
-                                market_type = EXCLUDED.market_type,
-                                last_updated = CURRENT_TIMESTAMP
+                                industry = EXCLUDED.industry,
+                                market_type = EXCLUDED.market_type
                         """, (stock_id, name, industry, target['name']))
                         count += 1
                 

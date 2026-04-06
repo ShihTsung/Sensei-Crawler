@@ -18,8 +18,7 @@ def analyze():
     try:
         with get_connection() as conn:
             with conn.cursor() as cur:
-                # 抓取包含產業代碼 (industry_type) 的資料
-                cur.execute("SELECT stock_id, company_name, industry_type FROM companies")
+                cur.execute("SELECT stock_id, company_name, industry FROM companies")
                 companies = cur.fetchall()
                 print(f"📊 掃描中... 總數: {len(companies)}")
 

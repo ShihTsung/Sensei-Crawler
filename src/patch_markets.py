@@ -30,12 +30,12 @@ def patch_missing_markets():
                         
                         if len(sid) == 4 and sid.isdigit():
                             cur.execute("""
-                                INSERT INTO companies (stock_id, company_name, industry_type, market_type)
+                                INSERT INTO companies (stock_id, company_name, industry, market_type)
                                 VALUES (%s, %s, %s, %s)
-                                ON CONFLICT (stock_id) 
-                                DO UPDATE SET 
+                                ON CONFLICT (stock_id)
+                                DO UPDATE SET
                                     market_type = EXCLUDED.market_type,
-                                    industry_type = EXCLUDED.industry_type
+                                    industry = EXCLUDED.industry
                             """, (sid, name, ind, target['name']))
                             count += 1
                     print(f"✅ {target['name']} 補全成功：{count} 家")
