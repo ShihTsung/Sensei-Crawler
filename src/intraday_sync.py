@@ -14,6 +14,7 @@ import requests
 import pytz
 from datetime import datetime
 from database import get_connection, init_db
+from sync_tdcc import sync_tdcc_weekly
 
 # ── 常數 ─────────────────────────────────────────────────────
 TW_TZ        = pytz.timezone("Asia/Taipei")
@@ -169,9 +170,18 @@ def run_sync():
 
 # ── Schedule Loop（Docker / 本機用）─────────────────────────
 
+def run_tdcc_sync():
+    print(f"\n{'='*50}")
+    print(f"📊 {datetime.now(TW_TZ).strftime('%Y-%m-%d %H:%M')} 開始集保週資料同步")
+    try:
+        sync_tdcc_weekly()
+    except Exception as e:
+        print(f"❌ 集保同步失敗: {e}")
+
 def start_scheduler():
     init_db()  # 確保資料表存在
     print("🚀 盤中快照排程啟動（09:00 ~ 13:30 每整點）")
+    print("📊 集保週資料排程：每週五 18:00 自動同步")
 
     # 盤中每整點執行
     for hour in range(9, 14):
@@ -179,6 +189,9 @@ def start_scheduler():
 
     # 額外加 13:30 收盤快照
     schedule.every().day.at("13:30").do(run_sync)
+
+    # 每週五 18:00 同步集保週資料（收盤後資料已更新）
+    schedule.every().friday.at("18:00").do(run_tdcc_sync)
 
     while True:
         schedule.run_pending()

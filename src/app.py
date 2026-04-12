@@ -9,6 +9,7 @@ from sync_company_info import sync_company_info
 from sync_top10 import sync_top10
 from twse_historical_sync import sync_historical
 from sync_range import run_sync_for_date
+from sync_tdcc import sync_tdcc_weekly
 
 st.set_page_config(layout="wide", page_title="台股戰略終端")
 pd.set_option("styler.render.max_elements", 1000000)
@@ -46,7 +47,7 @@ def get_all_available_dates():
         st.error(f"無法讀取日期清單: {e}")
         return []
 
-@st.cache_data(ttl=60)
+@st.cache_data(ttl=300)
 def load_all_data(date_str):
     query = """
         SELECT
@@ -73,16 +74,14 @@ def load_all_data(date_str):
         LEFT JOIN companies c
                ON p.stock_id = c.stock_id
         WHERE p.date = %s
-        ORDER BY "成交金額" DESC NULLS LAST
+          AND LENGTH(p.stock_id) <= 5
+        ORDER BY p.trade_value DESC NULLS LAST
     """
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(query, (date_str,))
             cols = [desc[0] for desc in cur.description]
-            df = pd.DataFrame(cur.fetchall(), columns=cols)
-    if not df.empty:
-        df = df[df["代碼"].str.len() <= 5]
-    return df
+            return pd.DataFrame(cur.fetchall(), columns=cols)
 
 @st.cache_data(ttl=300)
 def load_concentration(stock_id: str):
@@ -390,6 +389,21 @@ with st.sidebar.expander("🔧 資料管理工具"):
 
     st.divider()
 
+    # ── 集保週資料同步 ────────────────────────────────────────
+    st.markdown("**📊 集保週資料**")
+    st.caption("從集保中心抓取最新一週的持股分散資料")
+    if st.button("同步集保週資料", use_container_width=True, key="tdcc_run"):
+        with st.status("同步集保週資料中…", expanded=True) as job:
+            try:
+                sync_tdcc_weekly()
+                st.cache_data.clear()
+                job.update(label="✅ 完成", state="complete")
+            except Exception as e:
+                job.update(label="❌ 失敗", state="error")
+                st.error(str(e))
+
+    st.divider()
+
     # ── 行情＆籌碼同步 ────────────────────────────────────────
     st.markdown("**📈 行情＆籌碼同步**")
     st.caption("從證交所抓取收盤行情與三大法人籌碼")
@@ -404,8 +418,21 @@ with st.sidebar.expander("🔧 資料管理工具"):
                 job.update(label="❌ 失敗", state="error")
                 st.error(str(e))
 
-    st.caption("補抓歷史區間（每日含 8 秒等待，勿選太長）")
+    st.caption("補抓歷史區間（每交易日約需 8 秒，半年約 17 分鐘）")
     now_sync = datetime.now()
+
+    # 快速選擇
+    qc1, qc2, qc3 = st.columns(3)
+    if qc1.button("1 個月", use_container_width=True, key="qs_1m"):
+        st.session_state["sync_start"] = now_sync.date() - timedelta(days=30)
+        st.session_state["sync_end"]   = now_sync.date()
+    if qc2.button("3 個月", use_container_width=True, key="qs_3m"):
+        st.session_state["sync_start"] = now_sync.date() - timedelta(days=90)
+        st.session_state["sync_end"]   = now_sync.date()
+    if qc3.button("6 個月", use_container_width=True, key="qs_6m"):
+        st.session_state["sync_start"] = now_sync.date() - timedelta(days=180)
+        st.session_state["sync_end"]   = now_sync.date()
+
     col_s1, col_s2 = st.columns(2)
     sync_start = col_s1.date_input("起始日", value=now_sync.date() - timedelta(days=7), key="sync_start")
     sync_end   = col_s2.date_input("結束日", value=now_sync.date(), key="sync_end")
@@ -443,7 +470,7 @@ if stock_df.empty:
 # 儀表板
 col1, col2, col3 = st.columns(3)
 col1.metric("顯示家數（已過濾權證）", f"{len(stock_df)} 家")
-col2.metric("總成交金額", f"{stock_df['成交金額'].sum() / 1e8:.2f} 億")
+col2.metric("總成交金額", f"{float(stock_df['成交金額'].sum()) / 1e8:.2f} 億")
 col3.metric("查詢日期", selected_display_date)
 
 # 搜尋 + 產業篩選
