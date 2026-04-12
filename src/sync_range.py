@@ -70,11 +70,21 @@ def run_sync_for_date(date_str):
         print(f"💥 {date_str} 執行出錯: {e}")
         return False
 
-def sync_march_data():
-    # 設定補抓 2026 年 3 月份
-    current_date = datetime(2026, 3, 1)
-    end_date = datetime(2026, 3, 31)
-    
+def sync_march_data(start: datetime = None, end: datetime = None):
+    # 預設補抓「上個月」的資料
+    if start is None:
+        today = datetime.today()
+        first_of_this_month = today.replace(day=1)
+        end_of_last_month = first_of_this_month - timedelta(days=1)
+        start = end_of_last_month.replace(day=1)
+    if end is None:
+        today = datetime.today()
+        first_of_this_month = today.replace(day=1)
+        end = first_of_this_month - timedelta(days=1)
+
+    current_date = start
+    end_date = end
+
     print(f"📅 啟動補抓任務：從 {current_date.strftime('%Y-%m-%d')} 到 {end_date.strftime('%Y-%m-%d')}")
     
     while current_date <= end_date:

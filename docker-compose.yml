@@ -11,16 +11,21 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-sensei_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   app:
     build: .
     container_name: sensei-app
     restart: always
     depends_on:
-      - db
-    # 解決 DNS_PROBE_FINISHED_NXDOMAIN，直接定義 IP 對應
+      db:
+        condition: service_healthy
     extra_hosts:
-      - "data.tdcc.com.tw:117.56.213.165"
+      - "data.tdcc.com.tw:${TDCC_IP:-117.56.213.165}"
     env_file:
       - .env
     environment:
@@ -36,7 +41,8 @@ services:
     container_name: sensei-intraday
     restart: always
     depends_on:
-      - db
+      db:
+        condition: service_healthy
     env_file:
       - .env
     environment:

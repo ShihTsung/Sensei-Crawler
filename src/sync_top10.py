@@ -10,7 +10,7 @@ import re
 from io import StringIO
 from datetime import datetime
 import pandas as pd
-from database import get_connection
+from database import get_connection, init_db
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
@@ -36,7 +36,8 @@ def get_all_stock_ids() -> list[tuple[str, str]]:
                         (r[0], "sii" if r[1] == "上市" else "otc")
                         for r in rows
                     ]
-            except Exception:
+            except Exception as e:
+                print(f"⚠️  company_info 查詢失敗，使用 fallback: {e}")
                 conn.rollback()
 
             # fallback：從 twse_prices 取，全當上市處理
@@ -96,7 +97,7 @@ def fetch_top10(stock_id: str, typek: str, roc_year: int, season: int) -> list[d
                 try:
                     return float(re.sub(r"[^\d.]", "", str(val)))
                 except Exception:
-                    return None
+                    return None  # 數值解析失敗，回傳 None 跳過
 
             results.append({
                 "rank":        rank,
@@ -106,7 +107,8 @@ def fetch_top10(stock_id: str, typek: str, roc_year: int, season: int) -> list[d
             })
         return results
 
-    except Exception:
+    except Exception as e:
+        print(f"⚠️  fetch_top10 {stock_id} 失敗: {e}")
         return []
 
 
@@ -117,6 +119,7 @@ def sync_top10(year: int, season: int,
     progress_cb(done, total) 可選，供 UI 顯示進度。
     回傳寫入筆數。
     """
+    init_db()  # 確保資料表存在
     roc_year, s = _roc_year_season(year, season)
     year_period = f"{year}Q{season}"
     stocks = get_all_stock_ids()
@@ -127,17 +130,6 @@ def sync_top10(year: int, season: int,
 
     with get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS twse_top10_shareholders (
-                    stock_id    VARCHAR(10),
-                    year_period VARCHAR(20),
-                    rank        INT,
-                    name        VARCHAR(100),
-                    held_shares BIGINT,
-                    held_rate   NUMERIC,
-                    PRIMARY KEY (stock_id, year_period, name)
-                );
-            """)
 
             for i, (sid, typek) in enumerate(stocks):
                 rows = fetch_top10(sid, typek, roc_year, s)
@@ -154,8 +146,8 @@ def sync_top10(year: int, season: int,
                         """, (sid, year_period, r["rank"], r["name"],
                               r["held_shares"], r["held_rate"]))
                         written += 1
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        print(f"⚠️  寫入 {sid} 股東資料失敗: {e}")
 
                 # 每 50 支 commit 一次，減少鎖定時間
                 if (i + 1) % 50 == 0:

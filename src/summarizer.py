@@ -26,17 +26,15 @@ MODEL_NAME = "gemini-flash-latest"
 def get_ai_summary(text):
     prompt = f"""
     請針對以下科技新聞內容進行專業分析：
-    1. 提供 3 個重點摘要（繁體中文）。
-    2. 判定情緒評分（1-10分，1最悲觀，10最樂觀）。
-    3. 判定產業類別（如：AI, 半導體, 雲端服務）。
-    
+    1. 提供 3 個重點摘要（繁體中文），以字串陣列形式回傳。
+    2. 判定整體情緒（正面 / 中立 / 負面）。
+
     內容如下：{text[:3000]}
-    
+
     請嚴格按照以下 JSON 格式回覆：
     {{
-        "summary": "摘要內容",
-        "score": 數字,
-        "category": "類別"
+        "summary": ["重點一", "重點二", "重點三"],
+        "sentiment": "正面"
     }}
     """
     try:
@@ -86,13 +84,15 @@ def run_crawler():
         
         ai_data = get_ai_summary(text)
         if ai_data:
+            summary = ai_data.get('summary', [])
+            sentiment = ai_data.get('sentiment', '')
             cur.execute("""
-                INSERT INTO news_summaries (title, url, summary, sentiment_score, category)
-                VALUES (%s, %s, %s, %s, %s)
-            """, (title, link, ai_data['summary'], ai_data['score'], ai_data['category']))
+                INSERT INTO news_summaries (title, url, summary, sentiment)
+                VALUES (%s, %s, %s, %s)
+            """, (title, link, summary, sentiment))
             conn.commit()
             print(f"✅ 資料已成功存入資料庫")
-            time.sleep(2) # 避免觸發 429 配額限制
+            time.sleep(2)  # 避免觸發 429 配額限制
 
     cur.close()
     conn.close()

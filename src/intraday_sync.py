@@ -13,7 +13,7 @@ import yfinance as yf
 import requests
 import pytz
 from datetime import datetime
-from database import get_connection
+from database import get_connection, init_db
 
 # ── 常數 ─────────────────────────────────────────────────────
 TW_TZ        = pytz.timezone("Asia/Taipei")
@@ -124,14 +124,6 @@ def save_snapshot(snapshot_time: datetime, prices: dict[str, float]) -> int:
 
     with get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS twse_intraday (
-                    stock_id      VARCHAR(10),
-                    snapshot_time TIMESTAMP,
-                    close_price   NUMERIC,
-                    PRIMARY KEY   (stock_id, snapshot_time)
-                )
-            """)
             cur.executemany("""
                 INSERT INTO twse_intraday (stock_id, snapshot_time, close_price)
                 VALUES (%s, %s, %s)
@@ -178,6 +170,7 @@ def run_sync():
 # ── Schedule Loop（Docker / 本機用）─────────────────────────
 
 def start_scheduler():
+    init_db()  # 確保資料表存在
     print("🚀 盤中快照排程啟動（09:00 ~ 13:30 每整點）")
 
     # 盤中每整點執行
