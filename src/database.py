@@ -1,35 +1,57 @@
-import psycopg2
+import logging
 import os
+from contextlib import contextmanager
+
+from psycopg2 import pool
 from dotenv import load_dotenv
 
-# Docker 內：DB_HOST 由 docker-compose env_file 注入（值為 "db"）
-# 本機直接跑：.env 裡設 DB_HOST=localhost
 load_dotenv()
 
-DB_CONFIG = {
-    "host":     os.getenv("DB_HOST", "localhost"),
-    "database": os.getenv("DB_NAME", "sensei_db"),
-    "user":     os.getenv("DB_USER", "postgres"),
-    "password": os.getenv("DB_PASSWORD", ""),
-    "port":     os.getenv("DB_PORT", "5432"),
-}
+logger = logging.getLogger(__name__)
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(name)s %(levelname)s %(message)s",
+)
+
+_pool: pool.ThreadedConnectionPool | None = None
+
+
+def _get_pool() -> pool.ThreadedConnectionPool:
+    global _pool
+    if _pool is None:
+        _pool = pool.ThreadedConnectionPool(
+            minconn=1,
+            maxconn=5,
+            host=os.getenv("DB_HOST", "localhost"),
+            database=os.getenv("DB_NAME", "sensei_db"),
+            user=os.getenv("DB_USER", "postgres"),
+            password=os.getenv("DB_PASSWORD", ""),
+            port=os.getenv("DB_PORT", "5432"),
+            connect_timeout=10,
+        )
+    return _pool
+
+
+@contextmanager
 def get_connection():
-    """建立資料庫連線"""
-    return psycopg2.connect(
-        host=os.getenv("DB_HOST", "localhost"),
-        database=os.getenv("DB_NAME", "sensei_db"),
-        user=os.getenv("DB_USER", "postgres"),
-        password=os.getenv("DB_PASSWORD", ""),
-        port=os.getenv("DB_PORT", "5432")
-    )
+    """從 connection pool 取得連線，離開時自動歸還。"""
+    p = _get_pool()
+    conn = p.getconn()
+    try:
+        yield conn
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        p.putconn(conn)
+
 
 def init_db():
-    """自動化建表：整合行情、籌碼、董監、十大股東與集保週資料"""
+    """建立所有資料表（idempotent）。"""
     try:
         with get_connection() as conn:
             with conn.cursor() as cur:
-                # 1. 行情表
                 cur.execute('''
                     CREATE TABLE IF NOT EXISTS twse_prices (
                         stock_id VARCHAR(20), stock_name VARCHAR(100), date VARCHAR(20),
@@ -41,7 +63,6 @@ def init_db():
                         pe_ratio NUMERIC, PRIMARY KEY (stock_id, date)
                     );
                 ''')
-                # 2. 籌碼表
                 cur.execute('''
                     CREATE TABLE IF NOT EXISTS twse_institutional (
                         stock_id VARCHAR(20), date VARCHAR(20),
@@ -50,7 +71,6 @@ def init_db():
                         dealer_net BIGINT, PRIMARY KEY (stock_id, date)
                     );
                 ''')
-                # 3. 董監持股表
                 cur.execute('''
                     CREATE TABLE IF NOT EXISTS twse_insider_holding (
                         stock_id VARCHAR(10), date VARCHAR(20),
@@ -59,7 +79,6 @@ def init_db():
                         PRIMARY KEY (stock_id, date, name)
                     );
                 ''')
-                # 4. 前十大股東表
                 cur.execute('''
                     CREATE TABLE IF NOT EXISTS twse_top10_shareholders (
                         stock_id VARCHAR(10), year_period VARCHAR(20),
@@ -68,7 +87,6 @@ def init_db():
                         PRIMARY KEY (stock_id, year_period, name)
                     );
                 ''')
-                # 5. 集保週資料表
                 cur.execute('''
                     CREATE TABLE IF NOT EXISTS twse_weekly_concentration (
                         stock_id VARCHAR(10), date VARCHAR(20),
@@ -76,16 +94,15 @@ def init_db():
                         PRIMARY KEY (stock_id, date, level)
                     );
                 ''')
-                # 6. 盤中快照表
+                # snapshot_time 用 TIMESTAMPTZ 保留時區資訊
                 cur.execute('''
                     CREATE TABLE IF NOT EXISTS twse_intraday (
                         stock_id      VARCHAR(10),
-                        snapshot_time TIMESTAMP,
+                        snapshot_time TIMESTAMPTZ,
                         close_price   NUMERIC,
                         PRIMARY KEY   (stock_id, snapshot_time)
                     );
                 ''')
-                # 7. 公司基本資料表
                 cur.execute('''
                     CREATE TABLE IF NOT EXISTS companies (
                         stock_id     TEXT PRIMARY KEY,
@@ -97,36 +114,43 @@ def init_db():
                         ai_analysis_note TEXT
                     );
                 ''')
-                # 補欄位（舊資料庫升級用）
                 for col, typedef in [
                     ("current_price",    "NUMERIC"),
                     ("ai_analysis_note", "TEXT"),
                 ]:
-                    cur.execute(f"""
-                        ALTER TABLE companies ADD COLUMN IF NOT EXISTS {col} {typedef};
-                    """)
-                # ── INDEX ────────────────────────────────────────────
+                    cur.execute(f"ALTER TABLE companies ADD COLUMN IF NOT EXISTS {col} {typedef};")
+
+                # 舊資料庫升級：TIMESTAMP → TIMESTAMPTZ
+                cur.execute("""
+                    SELECT data_type FROM information_schema.columns
+                    WHERE table_name='twse_intraday' AND column_name='snapshot_time';
+                """)
+                row = cur.fetchone()
+                if row and row[0].lower() == "timestamp without time zone":
+                    cur.execute(
+                        "ALTER TABLE twse_intraday ALTER COLUMN snapshot_time TYPE TIMESTAMPTZ "
+                        "USING snapshot_time AT TIME ZONE 'Asia/Taipei';"
+                    )
+                    logger.info("已將 twse_intraday.snapshot_time 升級為 TIMESTAMPTZ")
+
                 cur.execute('CREATE INDEX IF NOT EXISTS idx_twse_prices_date ON twse_prices (date);')
                 cur.execute('CREATE INDEX IF NOT EXISTS idx_twse_institutional_date ON twse_institutional (date);')
                 cur.execute('CREATE INDEX IF NOT EXISTS idx_twse_intraday_time ON twse_intraday (snapshot_time);')
                 conn.commit()
-        print("✅ 所有資料表結構檢查完成")
+        logger.info("所有資料表結構檢查完成")
     except Exception as e:
-        print(f"❌ 初始化失敗: {e}")
+        logger.error("初始化失敗: %s", e)
+
 
 def upsert_companies(rows):
-    """
-    批次寫入公司基本資料。
-    rows: list of (stock_id, company_name, industry, market_type)
-          或 (stock_id, company_name, ind_code, *extra_ignored, market_type, sector_group)
-    只取前 4 個欄位寫入，其餘忽略以維持向下相容。
-    回傳 True 表示成功。
-    """
+    """批次寫入公司基本資料，回傳 True 表示成功。"""
     try:
         with get_connection() as conn:
             with conn.cursor() as cur:
                 for row in rows:
-                    stock_id, company_name, industry, market_type = row[0], row[1], row[2], row[6] if len(row) > 4 else row[3]
+                    stock_id, company_name, industry, market_type = (
+                        row[0], row[1], row[2], row[6] if len(row) > 4 else row[3]
+                    )
                     if not stock_id:
                         continue
                     cur.execute("""
@@ -140,8 +164,9 @@ def upsert_companies(rows):
             conn.commit()
         return True
     except Exception as e:
-        print(f"❌ upsert_companies 失敗: {e}")
+        logger.error("upsert_companies 失敗: %s", e)
         return False
+
 
 if __name__ == "__main__":
     init_db()

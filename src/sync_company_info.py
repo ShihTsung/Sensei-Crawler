@@ -4,24 +4,24 @@ sync_company_info.py
 資料幾乎不變，建議每年更新一次或手動觸發。
 """
 
-import requests
+import logging
 import time
+
+import requests
+
 from database import get_connection
+from http_utils import with_retry
+
+logger = logging.getLogger(__name__)
 
 HEADERS = {"User-Agent": "Mozilla/5.0"}
 
 SOURCES = [
-    {
-        "market": "上市",
-        "url": "https://openapi.twse.com.tw/v1/opendata/t187ap03_L",
-    },
-    {
-        "market": "上櫃",
-        "url": "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O",
-    },
+    {"market": "上市", "url": "https://openapi.twse.com.tw/v1/opendata/t187ap03_L"},
+    {"market": "上櫃", "url": "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O"},
 ]
 
-# ── TWSE / TPEx 欄位名稱可能略有不同，用 fallback list 處理 ──
+
 def _get(item: dict, *keys, default=""):
     for k in keys:
         v = item.get(k)
@@ -29,11 +29,19 @@ def _get(item: dict, *keys, default=""):
             return str(v).strip()
     return default
 
+
 def _parse_capital(val) -> int | None:
     try:
         return int(str(val).replace(",", "").replace(" ", ""))
     except Exception:
         return None
+
+
+@with_retry()
+def _fetch_source(url: str) -> list:
+    resp = requests.get(url, headers=HEADERS, timeout=30)
+    resp.raise_for_status()
+    return resp.json()
 
 
 def sync_company_info() -> int:
@@ -62,19 +70,17 @@ def sync_company_info() -> int:
             """)
 
             for src in SOURCES:
-                print(f"📡 抓取 {src['market']} 基本資料...")
+                logger.info("抓取 %s 基本資料...", src['market'])
                 try:
-                    resp = requests.get(src["url"], headers=HEADERS, timeout=30)
-                    resp.raise_for_status()
-                    data = resp.json()
+                    data = _fetch_source(src["url"])
                 except Exception as e:
-                    print(f"❌ {src['market']} 失敗: {e}")
+                    logger.error("%s 失敗: %s", src['market'], e)
                     continue
 
                 count = 0
                 for item in data:
                     sid = _get(item, "公司代號", "SecuritiesCompanyCode")
-                    if not sid or len(sid) > 6:
+                    if not sid or not sid.isdigit() or not (4 <= len(sid) <= 6):
                         continue
 
                     cur.execute("""
@@ -116,10 +122,10 @@ def sync_company_info() -> int:
 
                 conn.commit()
                 total += count
-                print(f"✅ {src['market']}：{count} 家")
+                logger.info("%s：%d 家", src['market'], count)
                 time.sleep(2)
 
-    print(f"🎉 公司基本資料匯入完成：{total} 筆")
+    logger.info("公司基本資料匯入完成：%d 筆", total)
     return total
 
 

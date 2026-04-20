@@ -1,47 +1,48 @@
-import requests
-import pandas as pd
+import logging
 from io import StringIO
+
+import pandas as pd
+import requests
+
 from database import get_connection
+from http_utils import with_retry
+
+logger = logging.getLogger(__name__)
+
+_URL = "https://opendata.tdcc.com.tw/getOD.ashx?id=1-5"
+_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+    "Accept": "text/csv, */*",
+}
+
+
+@with_retry()
+def _fetch_csv() -> str:
+    resp = requests.get(_URL, headers=_HEADERS, timeout=30)
+    resp.raise_for_status()
+    resp.encoding = 'utf-8-sig'
+    return resp.text
+
 
 def sync_tdcc_weekly():
-    """
-    集保戶股權分散表
-    正確 API: https://opendata.tdcc.com.tw/getOD.ashx?id=1-5
-    欄位: 資料日期, 證券代號, 持股分級, 人數, 股數, 占集保庫存數比例%
-    """
-    url = "https://opendata.tdcc.com.tw/getOD.ashx?id=1-5"
-
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
-        "Accept": "text/csv, */*",
-    }
-
-    print(f"📡 正在連線集保開放資料: {url}")
+    """集保戶股權分散表（週更），欄位：資料日期, 證券代號, 持股分級, 人數, 股數, 占比%"""
+    logger.info("正在連線集保開放資料...")
     try:
-        response = requests.get(url, headers=headers, timeout=30)
-        response.encoding = 'utf-8-sig'  # 處理 BOM (\ufeff)
-
-        if response.status_code != 200:
-            print(f"❌ 伺服器回傳狀態碼: {response.status_code}")
-            return
-
-        df = pd.read_csv(StringIO(response.text))
+        text = _fetch_csv()
+        df = pd.read_csv(StringIO(text))
         df.columns = ['date', 'stock_id', 'level', 'holders', 'shares', 'rate']
-        print(f"✅ 下載成功，共 {len(df)} 筆，日期: {df['date'].iloc[0]}")
-
+        logger.info("下載成功，共 %d 筆，日期: %s", len(df), df['date'].iloc[0])
     except Exception as e:
-        print(f"💥 下載失敗: {e}")
+        logger.error("下載失敗: %s", e)
         return
 
-    print("📝 開始寫入資料庫...")
+    logger.info("開始寫入資料庫...")
     try:
         with get_connection() as conn:
             with conn.cursor() as cur:
-                count = 0
-                skip = 0
+                count = skip = 0
                 for _, row in df.iterrows():
                     sid = str(row['stock_id']).strip()
-                    # 只取純數字股票代碼（4~6碼）
                     if not sid.isdigit() or not (4 <= len(sid) <= 6):
                         skip += 1
                         continue
@@ -51,24 +52,15 @@ def sync_tdcc_weekly():
                                 (stock_id, date, level, holders, shares, rate)
                             VALUES (%s, %s, %s, %s, %s, %s)
                             ON CONFLICT (stock_id, date, level) DO NOTHING
-                        """, (
-                            sid,
-                            str(row['date']).strip(),
-                            int(row['level']),
-                            int(row['holders']),
-                            int(row['shares']),
-                            float(row['rate'])
-                        ))
+                        """, (sid, str(row['date']).strip(), int(row['level']),
+                              int(row['holders']), int(row['shares']), float(row['rate'])))
                         count += 1
                     except Exception as row_err:
-                        print(f"⚠️ 跳過異常資料 {sid}: {row_err}")
-                        continue
-
+                        logger.warning("跳過異常資料 %s: %s", sid, row_err)
                 conn.commit()
-        print(f"🎉 同步完成！寫入 {count} 筆，跳過 {skip} 筆（非標準股票代碼）。")
-
+        logger.info("同步完成！寫入 %d 筆，跳過 %d 筆（非標準股票代碼）", count, skip)
     except Exception as e:
-        print(f"💥 資料庫寫入失敗: {e}")
+        logger.error("資料庫寫入失敗: %s", e)
 
 
 if __name__ == "__main__":

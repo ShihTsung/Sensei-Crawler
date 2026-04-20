@@ -1,0 +1,13 @@
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - build
+      - '-f'
+      - Dockerfile.jobs
+      - '-t'
+      - '${_TAG}'
+      - '.'
+images:
+  - '${_TAG}'
+substitutions:
+  _TAG: ''
