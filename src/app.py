@@ -18,6 +18,24 @@ pd.set_option("styler.render.max_elements", 1000000)
 
 st.markdown("""
 <style>
+/* 主標題縮小 */
+h1 { font-size: 0.875rem !important; font-weight: normal !important; color: #888 !important; }
+
+/* 指標卡片縮小：value 與 label 統一大小 */
+[data-testid="metric-container"] { padding: 4px 8px !important; }
+[data-testid="metric-container"] [data-testid="metric-value"],
+[data-testid="metric-container"] [data-testid="stMetricValue"],
+[data-testid="metric-container"] [data-testid="metric-label"],
+[data-testid="metric-container"] [data-testid="stMetricLabel"] { font-size: 0.875rem !important; font-weight: normal !important; }
+
+/* 側邊欄文字縮小 */
+[data-testid="stSidebar"] h2,
+[data-testid="stSidebar"] h3,
+[data-testid="stSidebar"] .stMarkdown p,
+[data-testid="stSidebar"] label,
+[data-testid="stSidebar"] .stCaption { font-size: 0.75rem !important; }
+
+/* 手機響應式 */
 @media (max-width: 640px) {
     .stDataFrame { font-size: 12px !important; }
     .stDataFrame th, .stDataFrame td { padding: 3px 6px !important; }
