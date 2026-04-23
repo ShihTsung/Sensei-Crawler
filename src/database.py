@@ -114,11 +114,19 @@ def init_db():
                         ai_analysis_note TEXT
                     );
                 ''')
-                for col, typedef in [
-                    ("current_price",    "NUMERIC"),
-                    ("ai_analysis_note", "TEXT"),
-                ]:
-                    cur.execute(f"ALTER TABLE companies ADD COLUMN IF NOT EXISTS {col} {typedef};")
+                cur.execute("ALTER TABLE companies ADD COLUMN IF NOT EXISTS current_price NUMERIC;")
+                cur.execute("ALTER TABLE companies ADD COLUMN IF NOT EXISTS ai_analysis_note TEXT;")
+                cur.execute('''
+                    CREATE TABLE IF NOT EXISTS news_summaries (
+                        id         SERIAL PRIMARY KEY,
+                        title      TEXT,
+                        company    TEXT,
+                        summary    TEXT[],
+                        sentiment  TEXT,
+                        url        TEXT UNIQUE,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    );
+                ''')
 
                 # 舊資料庫升級：TIMESTAMP → TIMESTAMPTZ
                 cur.execute("""
@@ -140,6 +148,11 @@ def init_db():
         logger.info("所有資料表結構檢查完成")
     except Exception as e:
         logger.error("初始化失敗: %s", e)
+
+
+def is_valid_stock_id(sid: str) -> bool:
+    """台灣股票代碼驗證：4~6 碼純數字"""
+    return bool(sid) and sid.isdigit() and 4 <= len(sid) <= 6
 
 
 def upsert_companies(rows):
