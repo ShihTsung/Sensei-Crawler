@@ -5,6 +5,7 @@ from io import StringIO
 
 import pandas as pd
 import requests
+from psycopg2.extras import execute_values
 
 from database import get_connection
 
@@ -47,28 +48,35 @@ def sync_insider_holding(year: int, month: int):
 
         dfs = pd.read_html(StringIO(response.text))
         df = next((t for t in dfs if '公司代號' in t.columns and '姓名' in t.columns), None)
-
         if df is None:
             logger.error("找不到表格，請確認 MOPS 回應格式。")
             return
 
+        rows = []
+        for _, row in df.iterrows():
+            sid = str(row['公司代號']).split('.')[0].strip()
+            if not sid.isdigit() or not (4 <= len(sid) <= 6):
+                continue
+            rows.append((sid, date_str, str(row['職稱']), str(row['姓名']),
+                         clean(row['目前持股']), clean(row['質押股數']), clean(row['質押比例'])))
+
+        if not rows:
+            logger.warning("%s 無有效資料", date_str)
+            return
+
         with get_connection() as conn:
             with conn.cursor() as cur:
-                for _, row in df.iterrows():
-                    sid = str(row['公司代號']).split('.')[0].strip()
-                    if not sid.isdigit() or not (4 <= len(sid) <= 6):
-                        continue
-                    cur.execute("""
-                        INSERT INTO twse_insider_holding
-                            (stock_id, date, title, name, held_shares, pledged_shares, pledge_rate)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s)
-                        ON CONFLICT (stock_id, date, name)
-                        DO UPDATE SET held_shares = EXCLUDED.held_shares,
-                                      pledged_shares = EXCLUDED.pledged_shares;
-                    """, (sid, date_str, str(row['職稱']), str(row['姓名']),
-                          clean(row['目前持股']), clean(row['質押股數']), clean(row['質押比例'])))
+                cur.execute("SET statement_timeout = 0")
+                execute_values(cur, """
+                    INSERT INTO twse_insider_holding
+                        (stock_id, date, title, name, held_shares, pledged_shares, pledge_rate)
+                    VALUES %s
+                    ON CONFLICT (stock_id, date, name) DO UPDATE SET
+                        held_shares    = EXCLUDED.held_shares,
+                        pledged_shares = EXCLUDED.pledged_shares
+                """, rows)
                 conn.commit()
-        logger.info("%s 導入成功！", date_str)
+        logger.info("%s 導入成功（%d 筆）", date_str, len(rows))
     except Exception as e:
         logger.error("執行錯誤: %s", e)
 

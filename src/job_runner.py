@@ -16,6 +16,7 @@ from flask import Flask, jsonify
 
 from intraday_sync import run_sync
 from sync_tdcc import sync_tdcc_weekly
+from twse_historical_sync import sync_historical
 
 logging.basicConfig(
     level=logging.INFO,
@@ -45,6 +46,17 @@ def tdcc():
         return jsonify({"ok": True})
     except Exception as e:
         logger.error("集保同步失敗: %s", e)
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/prices", methods=["POST"])
+def prices():
+    logger.info("Cloud Scheduler 觸發：每日行情同步")
+    try:
+        sync_historical()
+        return jsonify({"ok": True})
+    except Exception as e:
+        logger.error("行情同步失敗: %s", e)
         return jsonify({"ok": False, "error": str(e)}), 500
 
 

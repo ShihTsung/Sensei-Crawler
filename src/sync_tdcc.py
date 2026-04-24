@@ -3,6 +3,7 @@ from io import StringIO
 
 import pandas as pd
 import requests
+from psycopg2.extras import execute_values
 
 from database import get_connection
 from http_utils import with_retry
@@ -25,7 +26,6 @@ def _fetch_csv() -> str:
 
 
 def sync_tdcc_weekly():
-    """集保戶股權分散表（週更），欄位：資料日期, 證券代號, 持股分級, 人數, 股數, 占比%"""
     logger.info("正在連線集保開放資料...")
     try:
         text = _fetch_csv()
@@ -36,29 +36,37 @@ def sync_tdcc_weekly():
         logger.error("下載失敗: %s", e)
         return
 
-    logger.info("開始寫入資料庫...")
+    rows, skip = [], 0
+    for _, row in df.iterrows():
+        sid = str(row['stock_id']).strip()
+        if not sid.isdigit() or not (4 <= len(sid) <= 6):
+            skip += 1
+            continue
+        try:
+            rows.append((sid, str(row['date']).strip(), int(row['level']),
+                         int(row['holders']), int(row['shares']), float(row['rate'])))
+        except Exception as e:
+            logger.warning("跳過異常資料 %s: %s", sid, e)
+
+    if not rows:
+        logger.warning("無有效資料可寫入")
+        return
+
+    BATCH = 500
+    logger.info("開始寫入資料庫（%d 筆，分批 %d）...", len(rows), BATCH)
     try:
         with get_connection() as conn:
             with conn.cursor() as cur:
-                count = skip = 0
-                for _, row in df.iterrows():
-                    sid = str(row['stock_id']).strip()
-                    if not sid.isdigit() or not (4 <= len(sid) <= 6):
-                        skip += 1
-                        continue
-                    try:
-                        cur.execute("""
-                            INSERT INTO twse_weekly_concentration
-                                (stock_id, date, level, holders, shares, rate)
-                            VALUES (%s, %s, %s, %s, %s, %s)
-                            ON CONFLICT (stock_id, date, level) DO NOTHING
-                        """, (sid, str(row['date']).strip(), int(row['level']),
-                              int(row['holders']), int(row['shares']), float(row['rate'])))
-                        count += 1
-                    except Exception as row_err:
-                        logger.warning("跳過異常資料 %s: %s", sid, row_err)
-                conn.commit()
-        logger.info("同步完成！寫入 %d 筆，跳過 %d 筆（非標準股票代碼）", count, skip)
+                cur.execute("SET statement_timeout = 0")
+                for i in range(0, len(rows), BATCH):
+                    execute_values(cur, """
+                        INSERT INTO twse_weekly_concentration
+                            (stock_id, date, level, holders, shares, rate)
+                        VALUES %s
+                        ON CONFLICT (stock_id, date, level) DO NOTHING
+                    """, rows[i:i + BATCH])
+                    conn.commit()
+        logger.info("同步完成！寫入 %d 筆，跳過 %d 筆", len(rows), skip)
     except Exception as e:
         logger.error("資料庫寫入失敗: %s", e)
 

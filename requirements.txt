@@ -8,3 +8,4 @@ pytz
 yfinance
 schedule
 flask
+google-genai

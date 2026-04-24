@@ -12,6 +12,7 @@ from io import StringIO
 
 import pandas as pd
 import requests
+from psycopg2.extras import execute_values
 
 from database import get_connection, init_db
 from http_utils import with_retry
@@ -133,36 +134,41 @@ def sync_top10(year: int, season: int, progress_cb=None) -> int:
 
     logger.info("共 %d 支股票，年季：%s", total_stocks, year_period)
 
-    with get_connection() as conn:
-        with conn.cursor() as cur:
-            for i, (sid, typek) in enumerate(stocks):
-                rows = fetch_top10(sid, typek, roc_year, s)
-                for r in rows:
-                    try:
-                        cur.execute("""
+    CONN_BATCH = 50
+    for batch_start in range(0, total_stocks, CONN_BATCH):
+        batch = stocks[batch_start:batch_start + CONN_BATCH]
+        batch_rows = []
+
+        for i, (sid, typek) in enumerate(batch):
+            rows = fetch_top10(sid, typek, roc_year, s)
+            for r in rows:
+                batch_rows.append((sid, year_period, r["rank"], r["name"],
+                                   r["held_shares"], r["held_rate"]))
+            if progress_cb:
+                progress_cb(batch_start + i + 1, total_stocks)
+            time.sleep(1.5)
+
+        if batch_rows:
+            try:
+                with get_connection() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute("SET statement_timeout = 0")
+                        execute_values(cur, """
                             INSERT INTO twse_top10_shareholders
                                 (stock_id, year_period, rank, name, held_shares, held_rate)
-                            VALUES (%s, %s, %s, %s, %s, %s)
+                            VALUES %s
                             ON CONFLICT (stock_id, year_period, name) DO UPDATE SET
                                 rank        = EXCLUDED.rank,
                                 held_shares = EXCLUDED.held_shares,
                                 held_rate   = EXCLUDED.held_rate
-                        """, (sid, year_period, r["rank"], r["name"],
-                              r["held_shares"], r["held_rate"]))
-                        written += 1
-                    except Exception as e:
-                        logger.warning("寫入 %s 股東資料失敗: %s", sid, e)
+                        """, batch_rows)
+                        conn.commit()
+                written += len(batch_rows)
+            except Exception as e:
+                logger.warning("批次 %d 寫入失敗: %s", batch_start, e)
 
-                if (i + 1) % 50 == 0:
-                    conn.commit()
-                    logger.info("進度 %d/%d，已寫入 %d 筆", i + 1, total_stocks, written)
-
-                if progress_cb:
-                    progress_cb(i + 1, total_stocks)
-
-                time.sleep(1.5)
-
-            conn.commit()
+        logger.info("進度 %d/%d，已寫入 %d 筆",
+                    min(batch_start + CONN_BATCH, total_stocks), total_stocks, written)
 
     logger.info("前十大股東匯入完成：%d 筆", written)
     return written

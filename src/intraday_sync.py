@@ -15,6 +15,7 @@ import pytz
 import requests
 import schedule
 import yfinance as yf
+from psycopg2.extras import execute_values
 
 from database import get_connection, init_db
 from http_utils import with_retry
@@ -107,9 +108,10 @@ def save_snapshot(snapshot_time: datetime, prices: dict[str, float]) -> int:
     rows = [(ticker.split(".")[0], snapshot_time, price) for ticker, price in prices.items()]
     with get_connection() as conn:
         with conn.cursor() as cur:
-            cur.executemany("""
+            cur.execute("SET statement_timeout = 0")
+            execute_values(cur, """
                 INSERT INTO twse_intraday (stock_id, snapshot_time, close_price)
-                VALUES (%s, %s, %s)
+                VALUES %s
                 ON CONFLICT (stock_id, snapshot_time) DO UPDATE
                     SET close_price = EXCLUDED.close_price
             """, rows)

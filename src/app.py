@@ -13,7 +13,7 @@ from twse_historical_sync import sync_historical
 from sync_range import run_sync_for_date
 from sync_tdcc import sync_tdcc_weekly
 
-st.set_page_config(layout="wide", page_title="台股戰略終端")
+st.set_page_config(layout="wide", page_title="Sensei")
 pd.set_option("styler.render.max_elements", 1000000)
 
 st.markdown("""
@@ -286,9 +286,9 @@ def fmt_change(row):
 
 def color_change(val: str):
     if str(val).startswith("▲"):
-        return "color:#00c853; font-weight:bold"
-    elif str(val).startswith("▼"):
         return "color:#ff1744; font-weight:bold"
+    elif str(val).startswith("▼"):
+        return "color:#00c853; font-weight:bold"
     return "color:#9e9e9e"
 
 

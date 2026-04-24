@@ -2,6 +2,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
+from ai.gemini import analyze_concentration
 from data.queries import load_concentration
 from ui.constants import GROUP_COLORS, GROUPS, LEVEL_LABELS, PLOTLY_LAYOUT
 
@@ -33,7 +34,7 @@ def show_concentration_dialog(stock_id: str, stock_name: str):
     st.caption(f"共 {n_weeks} 週歷史資料　最新：{latest}")
     st.divider()
 
-    tab1, tab2 = st.tabs(["📈 週變化趨勢", "🍩 最新持股分布"])
+    tab1, tab2, tab3 = st.tabs(["📈 週變化趨勢", "🍩 最新持股分布", "🤖 AI 解讀"])
 
     with tab1:
         st.caption("正值 = 該族群本週持股佔比增加（買進）　負值 = 減少（賣出）")
@@ -97,3 +98,17 @@ def show_concentration_dialog(stock_id: str, stock_name: str):
                 yaxis=dict(gridcolor="rgba(128,128,128,0.1)"),
             )
             st.plotly_chart(fig_bar, use_container_width=True)
+
+    with tab3:
+        cache_key = f"ai_analysis_{stock_id}"
+        if st.button("🤖 分析籌碼", use_container_width=True, key=f"ai_btn_{stock_id}"):
+            with st.spinner("Gemini 分析中…"):
+                try:
+                    result = analyze_concentration(stock_id, stock_name, group_pivot)
+                    st.session_state[cache_key] = result
+                except RuntimeError as e:
+                    st.error(str(e))
+                except Exception as e:
+                    st.error(f"分析失敗：{e}")
+        if cached := st.session_state.get(cache_key):
+            st.markdown(cached)

@@ -24,4 +24,6 @@ Thumbs.db
 
 # 下載的資料檔（非程式碼）
 *.csv
+*.xls
+*.xlsx
 mops_debug.html

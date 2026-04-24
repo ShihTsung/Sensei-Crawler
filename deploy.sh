@@ -14,8 +14,8 @@ set -euo pipefail
 
 PROJECT_ID="${1:?請傳入 GCP Project ID，例如：bash deploy.sh my-project-123}"
 REGION="asia-east1"                       # 台灣最近的 GCP 區域
-IMAGE_APP="gcr.io/${PROJECT_ID}/sensei-app"
-IMAGE_JOBS="gcr.io/${PROJECT_ID}/sensei-jobs"
+IMAGE_APP="${REGION}-docker.pkg.dev/${PROJECT_ID}/sensei/sensei-app"
+IMAGE_JOBS="${REGION}-docker.pkg.dev/${PROJECT_ID}/sensei/sensei-jobs"
 
 # ── 從 .env 讀取 DB 設定（部署時注入為 Cloud Run 環境變數）──────
 if [ ! -f .env ]; then
@@ -57,7 +57,7 @@ gcloud run deploy sensei-app \
   --max-instances 1 \
   --min-instances 0 \
   --timeout 300 \
-  --set-env-vars "DB_HOST=${DB_HOST},DB_NAME=${DB_NAME},DB_USER=${DB_USER},DB_PASSWORD=${DB_PASSWORD},DB_PORT=${DB_PORT}" \
+  --set-env-vars "DB_HOST=${DB_HOST},DB_NAME=${DB_NAME},DB_USER=${DB_USER},DB_PASSWORD=${DB_PASSWORD},DB_PORT=${DB_PORT},GEMINI_API_KEY=${GEMINI_API_KEY},PYTHONPATH=/app/src" \
   --no-allow-unauthenticated
 
 APP_URL=$(gcloud run services describe sensei-app \
@@ -76,7 +76,7 @@ gcloud run deploy sensei-jobs \
   --max-instances 1 \
   --min-instances 0 \
   --timeout 600 \
-  --set-env-vars "DB_HOST=${DB_HOST},DB_NAME=${DB_NAME},DB_USER=${DB_USER},DB_PASSWORD=${DB_PASSWORD},DB_PORT=${DB_PORT}" \
+  --set-env-vars "DB_HOST=${DB_HOST},DB_NAME=${DB_NAME},DB_USER=${DB_USER},DB_PASSWORD=${DB_PASSWORD},DB_PORT=${DB_PORT},GEMINI_API_KEY=${GEMINI_API_KEY},PYTHONPATH=/app/src" \
   --no-allow-unauthenticated
 
 JOBS_URL=$(gcloud run services describe sensei-jobs \
@@ -127,6 +127,24 @@ gcloud scheduler jobs update http sensei-tdcc \
   --oidc-service-account-email "${SA}"
 
 echo "   ✅ 集保週資料排程：每週五 18:00（台北時間）"
+
+# 每日行情：週一至週五台北時間 16:00（UTC 8:00，收盤後）
+gcloud scheduler jobs create http sensei-prices \
+  --location "${REGION}" \
+  --schedule "0 8 * * 1-5" \
+  --time-zone "UTC" \
+  --uri "${JOBS_URL}/prices" \
+  --http-method POST \
+  --oidc-service-account-email "${SA}" \
+  --oidc-token-audience "${JOBS_URL}" \
+  2>/dev/null || \
+gcloud scheduler jobs update http sensei-prices \
+  --location "${REGION}" \
+  --schedule "0 8 * * 1-5" \
+  --uri "${JOBS_URL}/prices" \
+  --oidc-service-account-email "${SA}"
+
+echo "   ✅ 每日行情排程：週一至週五 16:00（台北時間）"
 
 echo ""
 echo "======================================================"
