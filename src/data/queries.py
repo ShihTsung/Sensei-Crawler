@@ -21,7 +21,7 @@ def load_all_data(date_str: str) -> pd.DataFrame:
         SELECT
             p.stock_id         AS "代碼",
             p.stock_name       AS "名稱",
-            c.industry         AS "產業",
+            sc.category_name   AS "產業",
             p.open_price       AS "開盤",
             p.high_price       AS "最高",
             p.low_price        AS "最低",
@@ -39,8 +39,8 @@ def load_all_data(date_str: str) -> pd.DataFrame:
         FROM twse_prices p
         LEFT JOIN twse_institutional i
                ON p.stock_id = i.stock_id AND p.date = i.date
-        LEFT JOIN companies c
-               ON p.stock_id = c.stock_id
+        LEFT JOIN stock_category sc
+               ON p.stock_id = sc.stock_id
         WHERE p.date = %s
           AND LENGTH(p.stock_id) <= 5
         ORDER BY p.trade_value DESC NULLS LAST

@@ -43,12 +43,17 @@ def get_all_stock_ids() -> list[tuple[str, str]]:
                 logger.warning("company_info 查詢失敗，使用 fallback: %s", e)
                 conn.rollback()
 
+            # fallback：從 twse_prices 取代碼，透過 company_info 補市場類型
             cur.execute("""
-                SELECT DISTINCT stock_id FROM twse_prices
-                WHERE stock_id ~ '^[0-9]+$' AND LENGTH(stock_id) BETWEEN 4 AND 6
-                ORDER BY stock_id
+                SELECT p.stock_id, COALESCE(ci.market_type, '上市') AS market_type
+                FROM (
+                    SELECT DISTINCT stock_id FROM twse_prices
+                    WHERE stock_id ~ '^[0-9]+$' AND LENGTH(stock_id) BETWEEN 4 AND 6
+                ) p
+                LEFT JOIN company_info ci USING (stock_id)
+                ORDER BY p.stock_id
             """)
-            return [(r[0], "sii") for r in cur.fetchall()]
+            return [(r[0], "sii" if r[1] == "上市" else "otc") for r in cur.fetchall()]
 
 
 def _roc_year_season(year: int, season: int) -> tuple[int, int]:

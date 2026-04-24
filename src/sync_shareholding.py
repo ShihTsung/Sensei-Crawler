@@ -14,10 +14,10 @@ logger = logging.getLogger(__name__)
 
 def clean(val):
     if val is None or pd.isna(val):
-        return 0
+        return None
     val = re.sub(r'<[^>]+>', '', str(val))
     val = val.replace(',', '').strip()
-    return 0 if val in ['--', '---', ''] else val
+    return None if val in ['--', '---', ''] else val
 
 
 def sync_insider_holding(year: int, month: int):

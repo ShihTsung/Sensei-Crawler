@@ -16,6 +16,7 @@ COPY . .
 # Cloud Run 使用 $PORT（預設 8080），本機 Docker 也可覆蓋
 EXPOSE 8080
 ENV PORT=8080
+ENV PYTHONPATH=/app/src
 
 CMD ["sh", "-c", "python -m streamlit run src/app.py \
   --server.port=${PORT} \
