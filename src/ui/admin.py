@@ -163,6 +163,8 @@ def _section_historical() -> None:
 
     st.caption("補抓歷史區間（每交易日約需 8 秒，半年約 17 分鐘）")
     today = datetime.now().date()
+    st.session_state.setdefault("sync_start", today - timedelta(days=7))
+    st.session_state.setdefault("sync_end", today)
     qc1, qc2, qc3 = st.columns(3)
     if qc1.button("1 個月", use_container_width=True, key="qs_1m"):
         st.session_state["sync_start"] = today - timedelta(days=30)
@@ -175,8 +177,8 @@ def _section_historical() -> None:
         st.session_state["sync_end"]   = today
 
     c1, c2 = st.columns(2)
-    sync_start = c1.date_input("起始日", value=today - timedelta(days=7), key="sync_start")
-    sync_end   = c2.date_input("結束日", value=today, key="sync_end")
+    sync_start = c1.date_input("起始日", key="sync_start")
+    sync_end   = c2.date_input("結束日", key="sync_end")
 
     if not st.button("🚀 補抓區間", use_container_width=True, key="hist_range"):
         return
