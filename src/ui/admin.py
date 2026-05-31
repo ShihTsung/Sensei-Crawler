@@ -60,13 +60,12 @@ def _section_company_info() -> None:
     st.markdown("**🏢 公司基本資料**")
     st.caption("一次拉取全市場統編、地址、董事長、電話（建議每年更新一次）")
     if st.button("更新公司基本資料", use_container_width=True, key="ci_run"):
-        with st.status("抓取公司基本資料中…", expanded=True) as job:
+        with st.spinner("抓取公司基本資料中…"):
             try:
                 count = sync_company_info()
                 st.cache_data.clear()
-                job.update(label=f"✅ 完成：{count} 筆", state="complete")
+                st.success(f"✅ 完成：{count} 筆")
             except Exception as e:
-                job.update(label="❌ 失敗", state="error")
                 st.error(str(e))
 
 
@@ -88,13 +87,12 @@ def _section_top10() -> None:
             prog.progress(done / total)
             status.caption(f"{done} / {total} 支")
 
-        with st.status(f"抓取 {year}Q{season} 前十大股東…", expanded=True) as job:
+        with st.spinner(f"抓取 {year}Q{season} 前十大股東…"):
             try:
                 count = sync_top10(year, season, progress_cb=_cb)
                 st.cache_data.clear()
-                job.update(label=f"✅ 完成：{count} 筆", state="complete")
+                st.success(f"✅ 完成：{count} 筆")
             except Exception as e:
-                job.update(label="❌ 失敗", state="error")
                 st.error(str(e))
 
 
@@ -125,12 +123,12 @@ def _section_insider_holding() -> None:
         return
 
     prog = st.progress(0)
-    with st.status(f"補齊 {len(months)} 個月份…", expanded=True) as job:
+    with st.spinner(f"補齊 {len(months)} 個月份…"):
         for i, (y, m) in enumerate(months):
             st.write(f"📡 {y}年{m:02d}月")
             sync_insider_holding(y, m)
             prog.progress((i + 1) / len(months))
-        job.update(label=f"✅ 完成，共補 {len(months)} 個月", state="complete")
+        st.success(f"✅ 完成，共補 {len(months)} 個月")
 
 
 # ── 區塊：集保週資料 ──────────────────────────────────────────
@@ -139,13 +137,12 @@ def _section_tdcc() -> None:
     st.markdown("**📊 集保週資料**")
     st.caption("從集保中心抓取最新一週的持股分散資料")
     if st.button("同步集保週資料", use_container_width=True, key="tdcc_run"):
-        with st.status("同步集保週資料中…", expanded=True) as job:
+        with st.spinner("同步集保週資料中…"):
             try:
                 sync_tdcc_weekly()
                 st.cache_data.clear()
-                job.update(label="✅ 完成", state="complete")
+                st.success("✅ 完成")
             except Exception as e:
-                job.update(label="❌ 失敗", state="error")
                 st.error(str(e))
 
 
@@ -156,13 +153,12 @@ def _section_historical() -> None:
     st.caption("從證交所抓取收盤行情與三大法人籌碼")
 
     if st.button("同步最新交易日", use_container_width=True, key="hist_latest"):
-        with st.status("同步最新交易日中…", expanded=True) as job:
+        with st.spinner("同步最新交易日中…"):
             try:
                 sync_historical()
                 st.cache_data.clear()
-                job.update(label="✅ 完成", state="complete")
+                st.success("✅ 完成")
             except Exception as e:
-                job.update(label="❌ 失敗", state="error")
                 st.error(str(e))
 
     st.caption("補抓歷史區間（每交易日約需 8 秒，半年約 17 分鐘）")
@@ -196,7 +192,7 @@ def _section_historical() -> None:
         return
 
     prog = st.progress(0)
-    with st.status(f"補抓 {len(dates)} 個交易日…", expanded=True) as job:
+    with st.spinner(f"補抓 {len(dates)} 個交易日…"):
         ok, skip = 0, 0
         for i, ds in enumerate(dates):
             st.write(f"📡 {ds}")
@@ -206,4 +202,4 @@ def _section_historical() -> None:
                 skip += 1
             prog.progress((i + 1) / len(dates))
         st.cache_data.clear()
-        job.update(label=f"✅ 完成：{ok} 日成功，{skip} 日跳過", state="complete")
+        st.success(f"✅ 完成：{ok} 日成功，{skip} 日跳過")
