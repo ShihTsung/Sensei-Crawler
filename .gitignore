@@ -27,3 +27,8 @@ Thumbs.db
 *.xls
 *.xlsx
 mops_debug.html
+# 地端 app log
+.streamlit.log
+
+# Claude Code 本機設定（launch.json 可共用，local 設定不進版控）
+.claude/settings.local.json

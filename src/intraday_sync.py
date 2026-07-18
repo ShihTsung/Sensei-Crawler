@@ -2,9 +2,7 @@
 intraday_sync.py
 盤中每小時快照：09:00 ~ 13:30（台北時間），每整點執行一次。
 
-雲端部署說明：
-  - Docker service：直接 `python intraday_sync.py` 跑 schedule loop
-  - GCP Cloud Scheduler：只呼叫 run_sync()，不需 schedule loop
+執行方式：`./run.sh intraday` 或 Docker service，跑 schedule loop 常駐。
 """
 
 import logging

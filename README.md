@@ -1,4 +1,6 @@
-# 台股戰略終端 Sensei-Crawler
+# 台股籌碼觀測站 HolderScope
+
+> 前身為 Sensei-Crawler，2026-07 改名。資料庫名（`sensei_crawler`）沿用舊名，不受影響。雲端（Cloud Run）部署已於 2026-07 停用移除，純地端執行。
 
 台股資料爬蟲 + Streamlit 儀表板，整合行情、籌碼、集保、董監持股、前十大股東，並接入 Gemini AI 進行產業分析。
 
@@ -9,7 +11,7 @@
 | 前端 | Streamlit |
 | 資料庫 | PostgreSQL（地端 Homebrew，多專案共用同一實例） |
 | AI | Google Gemini (`google-genai`) |
-| 部署 | 地端原生執行（雲端為 GCP Cloud Run，見 `CLOUD_SQL_MIGRATION.md`） |
+| 部署 | 地端原生執行（`./run.sh`；另有 docker-compose 可選） |
 | 資料來源 | 證交所 TWSE、集保 TDCC、公開資訊觀測站 MOPS |
 
 ## 功能
@@ -48,8 +50,8 @@ SQL
 ### 3. 設定環境變數
 
 ```bash
-git clone https://github.com/ShihTsung/Sensei-Crawler.git
-cd Sensei-Crawler
+git clone https://github.com/ShihTsung/HolderScope.git
+cd HolderScope
 cp .env.example .env   # 填入 DB_PASSWORD 與 GEMINI_API_KEY
 ```
 

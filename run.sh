@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 地端啟動 Sensei-Crawler（不使用 Docker，連本機 Homebrew postgresql）
+# 地端啟動 HolderScope（不使用 Docker，連本機 Homebrew postgresql）
 #
 #   ./run.sh app        # 啟動 Streamlit 儀表板（預設）
 #   ./run.sh intraday   # 啟動盤中快照 schedule loop（背景常駐用）
@@ -22,7 +22,9 @@ export PYTHONPATH=src
 cmd="${1:-app}"
 case "$cmd" in
   app)
-    exec "$VENV/bin/streamlit" run src/app.py --server.port "${PORT:-8503}" --server.address 127.0.0.1
+    # ADDR 預設 0.0.0.0(區網其他電腦可連);要鎖回只限本機就用 ADDR=127.0.0.1 ./run.sh app
+    # --server.headless true: 背景/服務執行時不跳 email 提示、不自動開瀏覽器
+    exec "$VENV/bin/streamlit" run src/app.py --server.port "${PORT:-8503}" --server.address "${ADDR:-0.0.0.0}" --server.headless true
     ;;
   intraday)
     exec "$VENV/bin/python" src/intraday_sync.py

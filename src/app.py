@@ -7,7 +7,7 @@ from ui.admin import render_admin_panel
 from ui.constants import FMT_MAP, MOBILE_COLS
 from ui.dialogs import show_concentration_dialog
 
-st.set_page_config(layout="wide", page_title="Sensei")
+st.set_page_config(layout="wide", page_title="HolderScope")
 pd.set_option("styler.render.max_elements", 1000000)
 
 st.markdown("""
