@@ -20,7 +20,8 @@ def clean(val):
     return None if val in ['--', '---', ''] else val
 
 
-def sync_insider_holding(year: int, month: int):
+def sync_insider_holding(year: int, month: int) -> int:
+    """抓取指定年月的董監持股，回傳寫入筆數；查無資料回傳 0，失敗拋例外。"""
     roc_year = year - 1911 if year > 1911 else year
     date_str = f"{year}{str(month).zfill(2)}"
     session = requests.Session()
@@ -36,49 +37,48 @@ def sync_insider_holding(year: int, month: int):
     }
 
     logger.info("正在請求 %d年%d月 董監持股...", year, month)
-    try:
-        session.get("https://mops.twse.com.tw/mops/web/t08get02", headers=headers, timeout=20)
-        time.sleep(2)
-        response = session.post(url, data=payload, headers=headers, timeout=30)
-        response.encoding = 'utf-8'
+    session.get("https://mops.twse.com.tw/mops/web/t08get02", headers=headers, timeout=20)
+    time.sleep(2)
+    response = session.post(url, data=payload, headers=headers, timeout=30)
+    response.encoding = 'utf-8'
 
-        if "查詢無資料" in response.text:
-            logger.warning("查無 %s 資料。", date_str)
-            return
+    if "查詢無資料" in response.text:
+        logger.warning("查無 %s 資料。", date_str)
+        return 0
 
-        dfs = pd.read_html(StringIO(response.text))
-        df = next((t for t in dfs if '公司代號' in t.columns and '姓名' in t.columns), None)
-        if df is None:
-            logger.error("找不到表格，請確認 MOPS 回應格式。")
-            return
+    dfs = pd.read_html(StringIO(response.text))
+    df = next((t for t in dfs if '公司代號' in t.columns and '姓名' in t.columns), None)
+    if df is None:
+        raise RuntimeError(f"{date_str} 找不到表格，請確認 MOPS 回應格式。")
 
-        rows = []
-        for _, row in df.iterrows():
-            sid = str(row['公司代號']).split('.')[0].strip()
-            if not sid.isdigit() or not (4 <= len(sid) <= 6):
-                continue
-            rows.append((sid, date_str, str(row['職稱']), str(row['姓名']),
-                         clean(row['目前持股']), clean(row['質押股數']), clean(row['質押比例'])))
+    rows = []
+    for _, row in df.iterrows():
+        sid = str(row['公司代號']).split('.')[0].strip()
+        if not sid.isdigit() or not (4 <= len(sid) <= 6):
+            continue
+        rows.append((sid, date_str, str(row['職稱']), str(row['姓名']),
+                     clean(row['目前持股']), clean(row['質押股數']), clean(row['質押比例'])))
 
-        if not rows:
-            logger.warning("%s 無有效資料", date_str)
-            return
+    if not rows:
+        logger.warning("%s 無有效資料", date_str)
+        return 0
 
-        with get_connection() as conn:
-            with conn.cursor() as cur:
-                cur.execute("SET statement_timeout = 0")
-                execute_values(cur, """
-                    INSERT INTO twse_insider_holding
-                        (stock_id, date, title, name, held_shares, pledged_shares, pledge_rate)
-                    VALUES %s
-                    ON CONFLICT (stock_id, date, name) DO UPDATE SET
-                        held_shares    = EXCLUDED.held_shares,
-                        pledged_shares = EXCLUDED.pledged_shares
-                """, rows)
-                conn.commit()
-        logger.info("%s 導入成功（%d 筆）", date_str, len(rows))
-    except Exception as e:
-        logger.error("執行錯誤: %s", e)
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SET statement_timeout = 0")
+            execute_values(cur, """
+                INSERT INTO twse_insider_holding
+                    (stock_id, date, title, name, held_shares, pledged_shares, pledge_rate)
+                VALUES %s
+                ON CONFLICT (stock_id, date, name) DO UPDATE SET
+                    title          = EXCLUDED.title,
+                    held_shares    = EXCLUDED.held_shares,
+                    pledged_shares = EXCLUDED.pledged_shares,
+                    pledge_rate    = EXCLUDED.pledge_rate
+            """, rows)
+            conn.commit()
+    logger.info("%s 導入成功（%d 筆）", date_str, len(rows))
+    return len(rows)
 
 
 if __name__ == "__main__":

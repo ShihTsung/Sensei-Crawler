@@ -21,16 +21,21 @@ _pool: pool.ThreadedConnectionPool | None = None
 def _get_pool() -> pool.ThreadedConnectionPool:
     global _pool
     if _pool is None:
+        # 注意：同一台 PG 上的 sensei_db 屬於別的專案，本專案預設一律連 sensei_crawler
+        host = os.getenv("DB_HOST", "localhost")
+        database = os.getenv("DB_NAME", "sensei_crawler")
+        user = os.getenv("DB_USER", "sensei_user")
         _pool = pool.ThreadedConnectionPool(
             minconn=1,
             maxconn=int(os.getenv("DB_MAX_CONN", "10")),
-            host=os.getenv("DB_HOST", "localhost"),
-            database=os.getenv("DB_NAME", "sensei_db"),
-            user=os.getenv("DB_USER", "postgres"),
+            host=host,
+            database=database,
+            user=user,
             password=os.getenv("DB_PASSWORD", ""),
             port=os.getenv("DB_PORT", "5432"),
             connect_timeout=10,
         )
+        logger.info("DB 連線池建立：%s@%s/%s", user, host, database)
     return _pool
 
 

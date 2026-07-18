@@ -1,6 +1,7 @@
 import logging
 import time
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from database import get_connection
 from twse_sync_core import (
@@ -18,7 +19,8 @@ logger = logging.getLogger(__name__)
 
 
 def find_last_trading_date(max_lookback: int = 10):
-    dt = datetime.now() + timedelta(hours=8)
+    # 用台北時區判斷，不假設主機時區（地端 = Asia/Taipei，Cloud Run = UTC 皆正確）
+    dt = datetime.now(ZoneInfo("Asia/Taipei"))
     if dt.hour < 15:
         dt -= timedelta(days=1)
     while dt.weekday() > 4:

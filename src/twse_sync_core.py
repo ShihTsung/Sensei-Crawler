@@ -64,7 +64,22 @@ def write_prices(conn, price_rows: list) -> None:
                     open_price, high_price, low_price, close_price, price_change_dir, price_change,
                     last_buy_price, last_buy_volume, last_sell_price, last_sell_volume, pe_ratio
                 ) VALUES %s
-                ON CONFLICT (stock_id, date) DO UPDATE SET close_price = EXCLUDED.close_price
+                ON CONFLICT (stock_id, date) DO UPDATE SET
+                    stock_name        = EXCLUDED.stock_name,
+                    trade_volume      = EXCLUDED.trade_volume,
+                    transaction_count = EXCLUDED.transaction_count,
+                    trade_value       = EXCLUDED.trade_value,
+                    open_price        = EXCLUDED.open_price,
+                    high_price        = EXCLUDED.high_price,
+                    low_price         = EXCLUDED.low_price,
+                    close_price       = EXCLUDED.close_price,
+                    price_change_dir  = EXCLUDED.price_change_dir,
+                    price_change      = EXCLUDED.price_change,
+                    last_buy_price    = EXCLUDED.last_buy_price,
+                    last_buy_volume   = EXCLUDED.last_buy_volume,
+                    last_sell_price   = EXCLUDED.last_sell_price,
+                    last_sell_volume  = EXCLUDED.last_sell_volume,
+                    pe_ratio          = EXCLUDED.pe_ratio
             """, price_rows[i:i + BATCH])
             conn.commit()
 
@@ -78,7 +93,14 @@ def write_chips(conn, chip_rows: list) -> None:
                     stock_id, date, foreign_buy, foreign_sell, foreign_net,
                     trust_buy, trust_sell, trust_net, dealer_net
                 ) VALUES %s
-                ON CONFLICT (stock_id, date) DO UPDATE SET foreign_net = EXCLUDED.foreign_net
+                ON CONFLICT (stock_id, date) DO UPDATE SET
+                    foreign_buy  = EXCLUDED.foreign_buy,
+                    foreign_sell = EXCLUDED.foreign_sell,
+                    foreign_net  = EXCLUDED.foreign_net,
+                    trust_buy    = EXCLUDED.trust_buy,
+                    trust_sell   = EXCLUDED.trust_sell,
+                    trust_net    = EXCLUDED.trust_net,
+                    dealer_net   = EXCLUDED.dealer_net
             """, chip_rows[i:i + BATCH])
             conn.commit()
 

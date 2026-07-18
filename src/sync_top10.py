@@ -107,12 +107,12 @@ def fetch_top10(stock_id: str, typek: str, roc_year: int, season: int) -> list[d
                 return None
 
         results = []
-        for rank, (_, row) in enumerate(df.iterrows(), start=1):
+        for _, row in df.iterrows():
             name = str(row.get(name_col, "")).strip()
             if not name or name in ("合計", "總計", "nan"):
                 continue
             results.append({
-                "rank":        rank,
+                "rank":        len(results) + 1,
                 "name":        name,
                 "held_shares": _clean_num(row.get(share_col)) if share_col else None,
                 "held_rate":   _clean_num(row.get(rate_col))  if rate_col  else None,
