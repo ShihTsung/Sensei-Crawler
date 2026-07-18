@@ -7,6 +7,8 @@
   3. 在 render_admin_panel() 中接上即可
 """
 
+import hmac
+import os
 from datetime import datetime, timedelta
 
 import pandas as pd
@@ -25,6 +27,8 @@ from twse_historical_sync import sync_historical
 
 def render_admin_panel() -> None:
     """在 sidebar expander 內呈現完整資料管理面板。"""
+    if not _check_admin_access():
+        return
     sections = [
         _section_category_upload,
         _section_company_info,
@@ -37,6 +41,25 @@ def render_admin_panel() -> None:
         if i > 0:
             st.divider()
         section()
+
+
+def _check_admin_access() -> bool:
+    """ADMIN_PASSWORD 有設定時，需輸入正確密碼才顯示管理工具。
+
+    App 綁 0.0.0.0 開放區網時，這些按鈕能觸發全市場爬蟲與資料匯入，
+    務必在 .env 設定 ADMIN_PASSWORD；未設定則不設防（僅建議純本機使用）。
+    """
+    expected = os.getenv("ADMIN_PASSWORD", "")
+    if not expected:
+        st.caption("⚠️ 未設定 ADMIN_PASSWORD，管理工具不設防（開放區網時請務必設定）。")
+        return True
+    entered = st.text_input("管理密碼", type="password", key="admin_pw")
+    if not entered:
+        return False
+    if not hmac.compare_digest(entered.encode(), expected.encode()):
+        st.error("密碼錯誤")
+        return False
+    return True
 
 
 # ── 區塊：產業分類 CSV 匯入 ──────────────────────────────────
@@ -124,11 +147,20 @@ def _section_insider_holding() -> None:
 
     prog = st.progress(0)
     with st.spinner(f"補齊 {len(months)} 個月份…"):
+        total, failed = 0, []
         for i, (y, m) in enumerate(months):
             st.write(f"📡 {y}年{m:02d}月")
-            sync_insider_holding(y, m)
+            try:
+                total += sync_insider_holding(y, m)
+            except Exception as e:
+                failed.append(f"{y}/{m:02d}")
+                st.warning(f"⚠️ {y}年{m:02d}月 失敗：{e}")
             prog.progress((i + 1) / len(months))
-        st.success(f"✅ 完成，共補 {len(months)} 個月")
+        st.cache_data.clear()
+        if failed:
+            st.error(f"❌ 完成 {total} 筆，但 {len(failed)} 個月失敗：{'、'.join(failed)}")
+        else:
+            st.success(f"✅ 完成，共 {len(months)} 個月、{total} 筆")
 
 
 # ── 區塊：集保週資料 ──────────────────────────────────────────
